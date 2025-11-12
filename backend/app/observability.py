@@ -2,7 +2,7 @@
 import time
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -25,9 +25,9 @@ class RequestMetrics:
     method: str
     status_code: int
     duration_ms: float
-    org_id: str | None = None
-    provider: str | None = None
-    error_class: ErrorClass | None = None
+    org_id: Optional[str] = None
+    provider: Optional[str] = None
+    error_class: Optional[ErrorClass] = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -49,6 +49,10 @@ class MetricsCollector:
         self.request_count_by_provider: Dict[str, int] = defaultdict(int)
         self.error_count_by_class: Dict[str, int] = defaultdict(int)
         self.latency_by_path: Dict[str, list[float]] = defaultdict(list)
+
+        # Pacer metrics (Phase 2)
+        self.pacer_rps_current: Dict[str, float] = {}  # Current RPS by provider
+        self.http_429_total: int = 0  # Total HTTP 429 responses
 
     def record_request(self, metrics: RequestMetrics):
         """Record request metrics."""
@@ -74,6 +78,18 @@ class MetricsCollector:
         if len(self.latency_by_path[metrics.path]) > 100:
             self.latency_by_path[metrics.path].pop(0)
 
+        # Track 429 errors
+        if metrics.status_code == 429:
+            self.http_429_total += 1
+
+    def set_pacer_rps(self, provider: str, rps: float):
+        """Set current RPS for a provider (for pacer metrics)."""
+        self.pacer_rps_current[provider] = rps
+
+    def get_pacer_rps(self, provider: str) -> Optional[float]:
+        """Get current RPS for a provider."""
+        return self.pacer_rps_current.get(provider)
+
     def get_summary(self) -> Dict[str, Any]:
         """Get metrics summary."""
         return {
@@ -83,6 +99,8 @@ class MetricsCollector:
             "requests_by_provider": dict(self.request_count_by_provider),
             "errors_by_class": dict(self.error_count_by_class),
             "latency_stats": self._get_latency_stats(),
+            "pacer_rps_current": dict(self.pacer_rps_current),
+            "http_429_total": self.http_429_total,
         }
 
     def get_org_metrics(self, org_id: str) -> Dict[str, Any]:

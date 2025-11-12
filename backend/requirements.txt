@@ -23,7 +23,7 @@ cryptography==42.0.0
 # LLM Providers
 openai==1.10.0
 google-generativeai==0.3.2
-httpx==0.26.0
+httpx[http2]==0.26.0
 
 # Utilities
 pydantic==2.5.3
@@ -33,7 +33,7 @@ pydantic-settings==2.1.0
 stripe==8.2.0
 
 # Development
-pytest==8.0.0
+pytest==7.4.4
 pytest-asyncio==0.23.4
 black==24.1.1
 ruff==0.1.15

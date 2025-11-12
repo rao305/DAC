@@ -1,8 +1,14 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { apiFetch, ApiError } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { CheckCircle2, XCircle, Loader2, AlertCircle, Key, Activity } from 'lucide-react'
 
 type Provider = 'perplexity' | 'openai' | 'gemini' | 'openrouter'
 
@@ -12,10 +18,22 @@ interface ProviderStatus {
   key_name?: string
   last_used?: string
   masked_key?: string
+  usage?: {
+    requests_today: number
+    tokens_today: number
+    request_limit: number
+    token_limit: number
+  }
+}
+
+interface MemoryStatus {
+  enabled: boolean
+  message: string
+  last_checked?: string
 }
 
 interface TestResult {
-  provider: string
+  provider: Provider
   success: boolean
   message: string
   details?: Record<string, any>
@@ -45,10 +63,8 @@ const PROVIDERS: { name: Provider; label: string; description: string }[] = [
 ]
 
 export default function ProvidersPage() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
-  const [orgId, setOrgId] = useState<string>('org_demo') // TODO: Get from session/auth
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([])
+  const [memoryStatus, setMemoryStatus] = useState<MemoryStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
   const [apiKey, setApiKey] = useState('')
@@ -56,43 +72,36 @@ export default function ProvidersPage() {
   const [saving, setSaving] = useState(false)
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
   const [testing, setTesting] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
+  const orgId = 'org_demo' // Dev mode: use demo org
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/signin')
-    }
-  }, [status, router])
-
-  useEffect(() => {
-    if (session) {
-      loadProviderStatuses()
-    }
-  }, [session])
-
-  const loadProviderStatuses = async () => {
+  const loadProviderStatuses = useCallback(async () => {
+    setLoading(true)
     try {
-      const response = await fetch(`http://localhost:8000/api/orgs/${orgId}/providers/status`)
-      if (response.ok) {
-        const data = await response.json()
-        setProviderStatuses(data)
-      }
+      const response = await apiFetch(`/orgs/${orgId}/providers/status`, orgId)
+      const data: { providers: ProviderStatus[]; memory_status?: MemoryStatus } = await response.json()
+      setProviderStatuses(data.providers || [])
+      setMemoryStatus(data.memory_status || null)
     } catch (error) {
       console.error('Failed to load provider statuses:', error)
+      setError('Failed to load provider statuses')
     } finally {
       setLoading(false)
     }
-  }
+  }, [orgId])
+
+  useEffect(() => {
+    loadProviderStatuses()
+  }, [loadProviderStatuses])
 
   const handleSaveKey = async (provider: Provider) => {
     if (!apiKey.trim()) return
 
     setSaving(true)
+    setError(null)
     try {
-      const response = await fetch(`http://localhost:8000/api/orgs/${orgId}/providers`, {
+      await apiFetch(`/orgs/${orgId}/providers`, orgId, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           provider,
           api_key: apiKey,
@@ -100,240 +109,254 @@ export default function ProvidersPage() {
         }),
       })
 
-      if (response.ok) {
-        setApiKey('')
-        setKeyName('')
-        setEditingProvider(null)
-        await loadProviderStatuses()
-      } else {
-        const error = await response.json()
-        alert(`Failed to save API key: ${error.detail || 'Unknown error'}`)
-      }
+      setApiKey('')
+      setKeyName('')
+      setEditingProvider(null)
+      await loadProviderStatuses()
     } catch (error) {
       console.error('Failed to save API key:', error)
-      alert('Failed to save API key')
+      if (error instanceof ApiError) {
+        setError(error.message)
+      } else {
+        setError('Failed to save API key')
+      }
     } finally {
       setSaving(false)
     }
   }
 
   const handleTestConnection = async (provider: Provider, useStored: boolean = true) => {
-    setTesting({ ...testing, [provider]: true })
+    setTesting((prev) => ({ ...prev, [provider]: true }))
+    setError(null)
     try {
-      const response = await fetch(`http://localhost:8000/api/orgs/${orgId}/providers/test`, {
+      const response = await apiFetch(`/orgs/${orgId}/providers/test`, orgId, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           provider,
           api_key: useStored ? null : apiKey,
         }),
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        setTestResults({ ...testResults, [provider]: result })
-      } else {
-        const error = await response.json()
-        setTestResults({
-          ...testResults,
-          [provider]: {
-            provider,
-            success: false,
-            message: error.detail || 'Test failed',
-          },
-        })
-      }
+      const result: TestConnectionResponse = await response.json()
+      setTestResults((prev) => ({
+        ...prev,
+        [provider]: {
+          provider,
+          success: result.success,
+          message: result.message,
+          details: result.details,
+        },
+      }))
     } catch (error) {
       console.error('Failed to test connection:', error)
-      setTestResults({
-        ...testResults,
+      setTestResults((prev) => ({
+        ...prev,
         [provider]: {
           provider,
           success: false,
-          message: 'Network error',
+          message: error instanceof ApiError ? error.message : 'Network error',
         },
-      })
+      }))
     } finally {
-      setTesting({ ...testing, [provider]: false })
+      setTesting((prev) => ({ ...prev, [provider]: false }))
     }
   }
 
-  if (status === 'loading' || loading) {
+  const getProviderStatus = (provider: Provider): ProviderStatus | undefined => {
+    return providerStatuses.find((p) => p.provider === provider)
+  }
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
+      <div className="min-h-screen bg-background pt-24 pb-12">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </div>
       </div>
     )
   }
 
-  if (!session) {
-    return null
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Provider Settings</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            Configure your API keys for different LLM providers. Keys are encrypted at rest.
-          </p>
-        </div>
-
+    <div className="min-h-screen bg-background pt-24 pb-12">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="space-y-6">
-          {PROVIDERS.map((provider) => {
-            const status = providerStatuses.find((s) => s.provider === provider.name)
-            const isEditing = editingProvider === provider.name
-            const testResult = testResults[provider.name]
-            const isTesting = testing[provider.name]
+          <div className="text-center space-y-2">
+            <h1 className="text-4xl font-bold text-foreground">Provider Settings</h1>
+            <p className="text-muted-foreground">Configure your LLM provider API keys</p>
+          </div>
 
-            return (
-              <div
-                key={provider.name}
-                className="bg-white shadow rounded-lg p-6 border border-gray-200"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-semibold text-gray-900">{provider.label}</h3>
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {memoryStatus && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Memory Status
+                </CardTitle>
+                <CardDescription>Vector database health check</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  {memoryStatus.enabled ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <XCircle className="h-5 w-5 text-red-500" />
+                  )}
+                  <span className={memoryStatus.enabled ? 'text-green-500' : 'text-red-500'}>
+                    {memoryStatus.message}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid gap-6">
+            {PROVIDERS.map((provider) => {
+              const status = getProviderStatus(provider.name)
+              const isEditing = editingProvider === provider.name
+              const testResult = testResults[provider.name]
+
+              return (
+                <Card key={provider.name}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          {provider.label}
+                          {status?.configured && (
+                            <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
+                              Configured
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription>{provider.description}</CardDescription>
+                      </div>
                       {status?.configured && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Configured
-                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleTestConnection(provider.name, true)}
+                          disabled={testing[provider.name]}
+                        >
+                          {testing[provider.name] ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Test'
+                          )}
+                        </Button>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-gray-600">{provider.description}</p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {testResult && (
+                      <Alert variant={testResult.success ? 'default' : 'destructive'}>
+                        {testResult.success ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                        <AlertDescription>{testResult.message}</AlertDescription>
+                      </Alert>
+                    )}
 
-                    {status?.configured && (
-                      <div className="mt-3 space-y-1 text-sm">
-                        <p className="text-gray-600">
-                          <span className="font-medium">Key:</span>{' '}
-                          <code className="px-2 py-1 bg-gray-100 rounded text-xs">
-                            {status.masked_key}
-                          </code>
-                        </p>
-                        {status.key_name && (
-                          <p className="text-gray-600">
-                            <span className="font-medium">Name:</span> {status.key_name}
-                          </p>
-                        )}
-                        {status.last_used && (
-                          <p className="text-gray-600">
-                            <span className="font-medium">Last used:</span>{' '}
-                            {new Date(status.last_used).toLocaleString()}
-                          </p>
-                        )}
+                    {status?.usage && (
+                      <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                        <div>
+                          <div className="text-sm text-muted-foreground">Requests Today</div>
+                          <div className="text-lg font-semibold">
+                            {status.usage.requests_today} / {status.usage.request_limit}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Tokens Today</div>
+                          <div className="text-lg font-semibold">
+                            {status.usage.tokens_today.toLocaleString()} / {status.usage.token_limit.toLocaleString()}
+                          </div>
+                        </div>
                       </div>
                     )}
 
-                    {isEditing && (
-                      <div className="mt-4 space-y-3">
+                    {status?.key_name && (
+                      <div className="text-sm text-muted-foreground">
+                        Key name: <span className="text-foreground">{status.key_name}</span>
+                      </div>
+                    )}
+
+                    {isEditing ? (
+                      <div className="space-y-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            API Key
-                          </label>
-                          <input
+                          <Label htmlFor="api-key">API Key</Label>
+                          <Input
+                            id="api-key"
                             type="password"
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}
-                            placeholder={`Enter ${provider.label} API key`}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Enter your API key"
+                            className="mt-1"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Key Name (optional)
-                          </label>
-                          <input
+                          <Label htmlFor="key-name">Key Name (Optional)</Label>
+                          <Input
+                            id="key-name"
                             type="text"
                             value={keyName}
                             onChange={(e) => setKeyName(e.target.value)}
                             placeholder="e.g., Production Key"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            className="mt-1"
                           />
                         </div>
                         <div className="flex gap-2">
-                          <button
+                          <Button
                             onClick={() => handleSaveKey(provider.name)}
-                            disabled={saving || !apiKey.trim()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={!apiKey.trim() || saving}
                           >
-                            {saving ? 'Saving...' : 'Save Key'}
-                          </button>
-                          {apiKey.trim() && (
-                            <button
-                              onClick={() => handleTestConnection(provider.name, false)}
-                              disabled={isTesting}
-                              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50"
-                            >
-                              {isTesting ? 'Testing...' : 'Test Before Saving'}
-                            </button>
-                          )}
-                          <button
+                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
+                            Save
+                          </Button>
+                          <Button
+                            variant="outline"
                             onClick={() => {
                               setEditingProvider(null)
                               setApiKey('')
                               setKeyName('')
                             }}
-                            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                           >
                             Cancel
-                          </button>
+                          </Button>
                         </div>
                       </div>
-                    )}
-
-                    {testResult && (
-                      <div
-                        className={`mt-4 p-3 rounded-md ${
-                          testResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                        }`}
+                    ) : (
+                      <Button
+                        variant={status?.configured ? 'outline' : 'default'}
+                        onClick={() => setEditingProvider(provider.name)}
                       >
-                        <p
-                          className={`text-sm font-medium ${
-                            testResult.success ? 'text-green-800' : 'text-red-800'
-                          }`}
-                        >
-                          {testResult.success ? '✓' : '✗'} {testResult.message}
-                        </p>
-                        {testResult.details && (
-                          <pre className="mt-2 text-xs text-gray-600">
-                            {JSON.stringify(testResult.details, null, 2)}
-                          </pre>
-                        )}
-                      </div>
+                        {status?.configured ? 'Update Key' : 'Add Key'}
+                      </Button>
                     )}
-                  </div>
-
-                  <div className="ml-4 flex flex-col gap-2">
-                    {!isEditing && (
-                      <>
-                        <button
-                          onClick={() => setEditingProvider(provider.name)}
-                          className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
-                        >
-                          {status?.configured ? 'Update' : 'Configure'}
-                        </button>
-                        {status?.configured && (
-                          <button
-                            onClick={() => handleTestConnection(provider.name, true)}
-                            disabled={isTesting}
-                            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-                          >
-                            {isTesting ? 'Testing...' : 'Test Connection'}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>
   )
 }
+
+interface TestConnectionResponse {
+  provider: string
+  success: boolean
+  message: string
+  details?: Record<string, any>
+}
+

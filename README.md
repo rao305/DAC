@@ -10,6 +10,8 @@ Multi-tenant B2B hub for cross-provider conversation threading (Perplexity, Open
 
 3) Apply migrations in `apps/api/migrations`
 
+> Enums are created idempotently; no manual `psql` step required.
+
 4) `uvicorn apps.api.main:app --reload` (API)
 
 5) `pnpm --filter @web dev` (Web)

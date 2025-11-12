@@ -17,12 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create ENUM types
-    op.execute("CREATE TYPE user_role AS ENUM ('admin', 'member', 'viewer')")
-    op.execute("CREATE TYPE message_role AS ENUM ('user', 'assistant', 'system')")
-    op.execute("CREATE TYPE memory_tier AS ENUM ('private', 'shared')")
-    op.execute("CREATE TYPE provider_type AS ENUM ('perplexity', 'openai', 'gemini', 'openrouter')")
-
+    # ENUM types already created manually - skip creation to avoid conflicts
     # Create orgs table
     op.create_table(
         'orgs',

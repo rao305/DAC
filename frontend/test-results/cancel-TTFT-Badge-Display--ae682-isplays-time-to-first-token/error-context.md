@@ -1,0 +1,219 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e6] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e7]:
+      - img [ref=e8]
+    - generic [ref=e11]:
+      - button "Open issues overlay" [ref=e12]:
+        - generic [ref=e13]:
+          - generic [ref=e14]: "3"
+          - generic [ref=e15]: "4"
+        - generic [ref=e16]:
+          - text: Issue
+          - generic [ref=e17]: s
+      - button "Collapse issues badge" [ref=e18]:
+        - img [ref=e19]
+  - banner [ref=e21]:
+    - generic [ref=e23]:
+      - link "D DAC" [ref=e24] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e25]: D
+        - text: DAC
+      - navigation [ref=e26]:
+        - link "Product" [ref=e27] [cursor=pointer]:
+          - /url: /#product
+        - link "Use Cases" [ref=e28] [cursor=pointer]:
+          - /url: /#use-cases
+        - link "Pricing" [ref=e29] [cursor=pointer]:
+          - /url: /#pricing
+        - link "Docs" [ref=e30] [cursor=pointer]:
+          - /url: /docs
+      - generic [ref=e31]:
+        - link "Sign In" [ref=e32] [cursor=pointer]:
+          - /url: /login
+          - button "Sign In" [ref=e33]
+        - link "Threads" [ref=e34] [cursor=pointer]:
+          - /url: /threads
+          - button "Threads" [ref=e35]
+        - link "Settings" [ref=e36] [cursor=pointer]:
+          - /url: /settings/providers
+          - button "Settings" [ref=e37]
+      - button [ref=e38]:
+        - img [ref=e39]
+  - generic [ref=e41]:
+    - generic [ref=e44]:
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - heading "Conversations" [level=2] [ref=e47]:
+            - img [ref=e48]
+            - text: Conversations
+          - button "Create new conversation" [ref=e50]:
+            - img [ref=e51]
+        - generic [ref=e52]:
+          - img [ref=e53]
+          - textbox "Search conversations" [ref=e56]:
+            - /placeholder: Search conversations...
+      - list "Conversation list" [ref=e60]:
+        - generic [ref=e61]:
+          - img [ref=e62]
+          - paragraph [ref=e64]: No conversations yet
+          - button "Start a conversation" [ref=e65]:
+            - img [ref=e66]
+            - text: Start a conversation
+    - separator [ref=e67]:
+      - img [ref=e69]
+    - generic [ref=e78]:
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - img [ref=e81]
+          - generic [ref=e83]:
+            - heading "New Conversation" [level=1] [ref=e84]
+            - paragraph [ref=e85]: "Using: gpt-4"
+        - generic [ref=e86]:
+          - button "Toggle theme" [ref=e87]:
+            - img [ref=e88]
+            - text: Toggle theme
+          - button [ref=e90]:
+            - img [ref=e91]
+      - alert [ref=e95]:
+        - generic [ref=e96]:
+          - img [ref=e97]
+          - generic [ref=e99]:
+            - generic [ref=e100]: API Error
+            - generic [ref=e101]: Failed to send message. Please try again.
+            - generic [ref=e102]:
+              - button "Retry" [ref=e103]:
+                - img [ref=e104]
+                - text: Retry
+              - button "Dismiss" [ref=e109]
+          - button "Dismiss error" [ref=e110]:
+            - img [ref=e111]
+      - log "Conversation messages" [ref=e117]:
+        - generic [ref=e119]:
+          - generic [ref=e120]:
+            - img [ref=e123]
+            - generic [ref=e125]:
+              - heading "Start a new conversation" [level=2] [ref=e126]
+              - paragraph [ref=e127]: Choose from the examples below or type your own message to get started with AI-powered assistance across multiple LLM providers.
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - img [ref=e130]
+              - heading "Try these examples" [level=3] [ref=e132]
+            - generic [ref=e133]:
+              - 'button "Use example prompt: Brainstorm ideas" [ref=e134]':
+                - generic [ref=e136]:
+                  - img [ref=e138]
+                  - generic [ref=e148]:
+                    - generic [ref=e149]:
+                      - heading "Brainstorm ideas" [level=4] [ref=e150]
+                      - text: Creative
+                    - paragraph [ref=e151]: Help me brainstorm creative ideas for a new mobile app that helps people stay organized
+              - 'button "Use example prompt: Write code" [ref=e152]':
+                - generic [ref=e154]:
+                  - img [ref=e156]
+                  - generic [ref=e159]:
+                    - generic [ref=e160]:
+                      - heading "Write code" [level=4] [ref=e161]
+                      - text: Technical
+                    - paragraph [ref=e162]: Write a Python function that validates email addresses using regex
+              - 'button "Use example prompt: Analyze data" [ref=e163]':
+                - generic [ref=e165]:
+                  - img [ref=e167]
+                  - generic [ref=e172]:
+                    - generic [ref=e173]:
+                      - heading "Analyze data" [level=4] [ref=e174]
+                      - text: Analysis
+                    - paragraph [ref=e175]: Explain the key insights I should look for when analyzing user behavior data
+              - 'button "Use example prompt: Get advice" [ref=e176]':
+                - generic [ref=e178]:
+                  - img [ref=e180]
+                  - generic [ref=e182]:
+                    - generic [ref=e183]:
+                      - heading "Get advice" [level=4] [ref=e184]
+                      - text: Learning
+                    - paragraph [ref=e185]: What are the best practices for conducting effective user interviews?
+          - generic [ref=e187]:
+            - generic [ref=e188]:
+              - generic [ref=e189]: 4+
+              - generic [ref=e190]: LLM Providers
+            - generic [ref=e191]:
+              - generic [ref=e192]: Smart
+              - generic [ref=e193]: Auto-routing
+            - generic [ref=e194]:
+              - generic [ref=e195]: Fast
+              - generic [ref=e196]: Responses
+      - generic [ref=e198]:
+        - generic [ref=e199]:
+          - textbox "Message input" [ref=e200]:
+            - /placeholder: Type your message...
+          - generic [ref=e201]:
+            - generic [ref=e203]: ⌘+Enterto send
+            - generic [ref=e204]: 0 / 10,000
+        - button "Send message" [disabled] [ref=e206]:
+          - img [ref=e207]
+          - text: Send
+    - separator [ref=e210]:
+      - img [ref=e212]
+    - generic [ref=e221]:
+      - generic [ref=e222]:
+        - generic [ref=e223]:
+          - img [ref=e224]
+          - heading "Settings" [level=2] [ref=e227]
+        - button "Close settings panel" [ref=e228]:
+          - img [ref=e229]
+      - generic [ref=e232]:
+        - tablist [ref=e233]:
+          - tab "Settings" [selected] [ref=e234]:
+            - img [ref=e235]
+            - text: Settings
+          - tab "Context" [ref=e236]:
+            - img [ref=e237]
+            - text: Context
+        - tabpanel "Settings" [ref=e244]:
+          - generic [ref=e245]:
+            - generic [ref=e246]:
+              - generic [ref=e247]: Active Models
+              - generic [ref=e248]: Select which LLMs to use for this conversation
+            - generic [ref=e250]:
+              - combobox "Select models" [ref=e251]:
+                - text: 1 model selected
+                - img [ref=e252]
+              - generic [ref=e255]: GPT-4×
+          - generic [ref=e256]:
+            - generic [ref=e257]:
+              - generic [ref=e258]: System Prompt
+              - generic [ref=e259]: Instructions for how the AI should behave
+            - textbox "You are a helpful assistant..." [ref=e261]
+          - generic [ref=e262]:
+            - generic [ref=e263]:
+              - generic [ref=e264]: Parameters
+              - generic [ref=e265]: Fine-tune the model's behavior
+            - generic [ref=e266]:
+              - generic [ref=e267]:
+                - generic [ref=e268]: Temperature0.7
+                - generic "Temperature setting":
+                  - generic:
+                    - slider
+                - paragraph [ref=e269]: Higher values make output more random and creative
+              - generic [ref=e270]:
+                - generic [ref=e271]: Max Tokens2,000
+                - generic "Maximum tokens setting":
+                  - generic:
+                    - slider
+                - paragraph [ref=e272]: Maximum length of the generated response
+  - region "Notifications alt+T" [ref=e273]:
+    - list [ref=e274]:
+      - listitem [ref=e275]:
+        - button "Close toast" [ref=e276]:
+          - img [ref=e277]
+        - img [ref=e281]
+        - generic [ref=e284]: Failed to load conversations
+      - listitem [ref=e285]:
+        - button "Close toast" [ref=e286]:
+          - img [ref=e287]
+        - img [ref=e291]
+        - generic [ref=e294]: Failed to load conversations
+  - alert [ref=e295]
+```

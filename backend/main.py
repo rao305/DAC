@@ -7,8 +7,38 @@ from config import get_settings
 from app.database import init_db, close_db
 from app.api import threads, router, providers, billing, audit, metrics
 from app.middleware import ObservabilityMiddleware
+from app.adapters._client import get_client
+
+# OpenTelemetry instrumentation (Phase 4)
+try:
+    from app.services.otel_instrumentation import instrument_fastapi_app
+    OTEL_ENABLED = True
+except ImportError:
+    OTEL_ENABLED = False
+    print("Warning: OpenTelemetry not available (install opentelemetry packages)")
 
 settings = get_settings()
+
+
+async def warm_provider_connections():
+    """Warm HTTP/2 connections to provider APIs on startup."""
+    client = await get_client()
+    
+    # Warm connections to major providers (harmless health checks or no-ops)
+    warm_urls = [
+        "https://api.perplexity.ai",
+        "https://api.openai.com",
+        "https://generativelanguage.googleapis.com",
+        "https://openrouter.ai",
+    ]
+    
+    for url in warm_urls:
+        try:
+            # Quick HEAD request to establish connection
+            await client.head(url, timeout=5.0)
+        except Exception:
+            # Ignore errors - this is just warming
+            pass
 
 
 @asynccontextmanager
@@ -16,6 +46,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     await init_db()
+    
+    # Warm provider connections (HTTP/2 + TLS handshake)
+    await warm_provider_connections()
+    
     yield
     # Shutdown
     await close_db()
@@ -39,6 +73,10 @@ app.add_middleware(
 
 # Observability middleware (Phase 1.5)
 app.add_middleware(ObservabilityMiddleware)
+
+# OpenTelemetry instrumentation (Phase 4)
+if OTEL_ENABLED:
+    app = instrument_fastapi_app(app)
 
 # Include routers
 app.include_router(threads.router, prefix="/api/threads", tags=["threads"])

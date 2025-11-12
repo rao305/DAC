@@ -1,4 +1,5 @@
 """Application configuration."""
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -32,11 +33,11 @@ class Settings(BaseSettings):
 
     # Email
     email_from: str
-    smtp_host: str | None = None
+    smtp_host: Optional[str] = None
     smtp_port: int = 587
-    smtp_user: str | None = None
-    smtp_password: str | None = None
-    resend_api_key: str | None = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    resend_api_key: Optional[str] = None
 
     # Stripe
     stripe_secret_key: str
@@ -50,15 +51,17 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
 
-    # Rate Limits
-    default_requests_per_day: int = 1000
-    default_tokens_per_day: int = 100000
+    # Rate Limits (conservative limits to stay under $5 USD)
+    # At ~$0.50 per 1M tokens average, 5M tokens ≈ $2.50
+    # Adding buffer for output tokens and request overhead
+    default_requests_per_day: int = 100
+    default_tokens_per_day: int = 5_000_000  # 5M tokens ≈ $2-3 depending on provider
 
     # LLM Fallback Keys (optional - orgs bring their own)
-    perplexity_api_key: str | None = None
-    openai_api_key: str | None = None
-    google_api_key: str | None = None
-    openrouter_api_key: str | None = None
+    perplexity_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
 
     @property
     def is_production(self) -> bool:

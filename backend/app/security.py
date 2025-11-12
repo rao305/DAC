@@ -1,6 +1,8 @@
 """Security utilities for RLS and encryption."""
+from typing import Optional
 from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from config import get_settings
 
 settings = get_settings()
@@ -21,7 +23,7 @@ class EncryptionService:
         return self.cipher.decrypt(ciphertext).decode()
 
 
-async def set_rls_context(session: AsyncSession, org_id: str, user_id: str | None = None):
+async def set_rls_context(session: AsyncSession, org_id: str, user_id: Optional[str] = None):
     """
     Set Row Level Security context for current session.
 
@@ -33,9 +35,9 @@ async def set_rls_context(session: AsyncSession, org_id: str, user_id: str | Non
         org_id: Organization ID
         user_id: Optional user ID (for private memory access)
     """
-    await session.execute(f"SET LOCAL app.current_org_id = '{org_id}'")
+    await session.execute(text(f"SET LOCAL app.current_org_id = '{org_id}'"))
     if user_id:
-        await session.execute(f"SET LOCAL app.current_user_id = '{user_id}'")
+        await session.execute(text(f"SET LOCAL app.current_user_id = '{user_id}'"))
 
 
 # Singleton instance

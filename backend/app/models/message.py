@@ -28,13 +28,22 @@ class Message(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Message content
-    role = Column(SQLEnum(MessageRole), nullable=False)
+    role = Column(
+        SQLEnum(
+            MessageRole,
+            name="message_role",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x]
+        ),
+        nullable=False
+    )
     content = Column(Text, nullable=False)
 
     # Provider metadata
     provider = Column(String, nullable=True)  # Which provider generated this (for assistant messages)
     model = Column(String, nullable=True)
     provider_message_id = Column(String, nullable=True)  # External ID from provider
+    meta = Column(JSON, nullable=True)  # Provider-specific metadata (latency, request IDs)
 
     # Token usage
     prompt_tokens = Column(Integer, nullable=True)

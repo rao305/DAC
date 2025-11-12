@@ -1,15 +1,22 @@
 """Provider API endpoints."""
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel, Field
-from typing import Dict, Any
 import httpx
 from datetime import datetime
 
 from app.database import get_db
 from app.models.provider_key import ProviderKey, ProviderType
+from app.models.org import Org
 from app.security import encryption_service, set_rls_context
+from app.api.deps import require_org_id
+from app.services.ratelimit import get_usage
+from app.services.memory_guard import memory_guard
+from config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -18,22 +25,50 @@ class SaveProviderKeyRequest(BaseModel):
     """Request to save a provider API key."""
     provider: ProviderType
     api_key: str = Field(..., min_length=1)
-    key_name: str | None = None
+    key_name: Optional[str] = None
 
 
 class ProviderStatus(BaseModel):
     """Provider configuration status."""
     provider: str
     configured: bool
-    key_name: str | None = None
-    last_used: datetime | None = None
-    masked_key: str | None = None
+    key_name: Optional[str] = None
+    last_used: Optional[datetime] = None
+    masked_key: Optional[str] = None
+    usage: Optional["ProviderUsage"] = None  # type: ignore[name-defined]
+
+
+class ProviderUsage(BaseModel):
+    """Per-provider usage snapshot."""
+
+    requests_today: int
+    tokens_today: int
+    request_limit: int
+    token_limit: int
+
+
+class MemoryStatusResponse(BaseModel):
+    """Memory subsystem status."""
+
+    enabled: bool
+    message: str
+    last_checked: Optional[datetime] = None
+
+
+class ProviderStatusResponse(BaseModel):
+    """Envelope around provider statuses."""
+
+    providers: list[ProviderStatus]
+    memory_status: MemoryStatusResponse
+
+
+ProviderStatus.model_rebuild()
 
 
 class TestConnectionRequest(BaseModel):
     """Request to test provider connection."""
     provider: ProviderType
-    api_key: str | None = None  # Optional: test with provided key or use stored key
+    api_key: Optional[str] = None  # Optional: test with provided key or use stored key
 
 
 class TestConnectionResponse(BaseModel):
@@ -41,13 +76,14 @@ class TestConnectionResponse(BaseModel):
     provider: str
     success: bool
     message: str
-    details: Dict[str, Any] | None = None
+    details: Optional[Dict[str, Any]] = None
 
 
-@router.post("/orgs/{org_id}/providers")
+@router.post("/{org_id}/providers")
 async def save_provider_key(
     org_id: str,
     request: SaveProviderKeyRequest,
+    header_org_id: str = Depends(require_org_id),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -55,6 +91,12 @@ async def save_provider_key(
 
     This endpoint implements the BYOK (Bring Your Own Key) vault with server-side encryption.
     """
+    if header_org_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="x-org-id header mismatch"
+        )
+
     # Set RLS context
     await set_rls_context(db, org_id)
 
@@ -98,14 +140,24 @@ async def save_provider_key(
     }
 
 
-@router.get("/orgs/{org_id}/providers/status", response_model=list[ProviderStatus])
-async def get_provider_status(org_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/{org_id}/providers/status", response_model=ProviderStatusResponse)
+async def get_provider_status(
+    org_id: str,
+    header_org_id: str = Depends(require_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Get masked provider configuration status.
 
     Returns list of all providers with their configuration status.
     Does not return actual keys, only masked versions for display.
     """
+    if header_org_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="x-org-id header mismatch"
+        )
+
     # Set RLS context
     await set_rls_context(db, org_id)
 
@@ -116,6 +168,12 @@ async def get_provider_status(org_id: str, db: AsyncSession = Depends(get_db)):
     )
     result = await db.execute(stmt)
     configured_keys = result.scalars().all()
+
+    org_stmt = select(Org).where(Org.id == org_id)
+    org_result = await db.execute(org_stmt)
+    org = org_result.scalar_one_or_none()
+    request_limit = (org.requests_per_day if org else None) or settings.default_requests_per_day
+    token_limit = (org.tokens_per_day if org else None) or settings.default_tokens_per_day
 
     # Build status for all providers
     statuses = []
@@ -128,29 +186,54 @@ async def get_provider_status(org_id: str, db: AsyncSession = Depends(get_db)):
             decrypted = encryption_service.decrypt(key.encrypted_key)
             masked = f"{decrypted[:8]}...{decrypted[-4:]}" if len(decrypted) > 12 else "***"
 
+            usage_snapshot = await get_usage(org_id, provider_type, request_limit, token_limit)
+
             statuses.append(ProviderStatus(
                 provider=provider_type.value,
                 configured=True,
                 key_name=key.key_name,
                 last_used=key.last_used,
-                masked_key=masked
+                masked_key=masked,
+                usage=ProviderUsage(
+                    requests_today=usage_snapshot.requests,
+                    tokens_today=usage_snapshot.tokens,
+                    request_limit=usage_snapshot.request_limit,
+                    token_limit=usage_snapshot.token_limit,
+                )
             ))
         else:
+            usage_snapshot = await get_usage(org_id, provider_type, request_limit, token_limit)
             statuses.append(ProviderStatus(
                 provider=provider_type.value,
                 configured=False,
                 key_name=None,
                 last_used=None,
-                masked_key=None
+                masked_key=None,
+                usage=ProviderUsage(
+                    requests_today=usage_snapshot.requests,
+                    tokens_today=usage_snapshot.tokens,
+                    request_limit=usage_snapshot.request_limit,
+                    token_limit=usage_snapshot.token_limit,
+                )
             ))
 
-    return statuses
+    memory_status = memory_guard.status()
+
+    return ProviderStatusResponse(
+        providers=statuses,
+        memory_status=MemoryStatusResponse(
+            enabled=memory_status.enabled,
+            message=memory_status.message,
+            last_checked=memory_status.last_checked,
+        )
+    )
 
 
-@router.post("/orgs/{org_id}/providers/test", response_model=TestConnectionResponse)
+@router.post("/{org_id}/providers/test", response_model=TestConnectionResponse)
 async def test_provider_connection(
     org_id: str,
     request: TestConnectionRequest,
+    header_org_id: str = Depends(require_org_id),
     db: AsyncSession = Depends(get_db),
     response: Any = None  # Will be injected by FastAPI
 ):
@@ -160,6 +243,12 @@ async def test_provider_connection(
     This is the health check endpoint for Phase 1 exit criteria.
     Makes a simple API call to verify the key works.
     """
+    if header_org_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="x-org-id header mismatch"
+        )
+
     # Set RLS context
     await set_rls_context(db, org_id)
 
@@ -194,6 +283,8 @@ async def test_provider_connection(
             success, message, details = await _test_gemini(api_key)
         elif request.provider == ProviderType.OPENROUTER:
             success, message, details = await _test_openrouter(api_key)
+        elif request.provider == ProviderType.KIMI:
+            success, message, details = await _test_kimi(api_key)
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -236,7 +327,7 @@ async def test_provider_connection(
         return result
 
 
-async def _test_perplexity(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
+async def _test_perplexity(api_key: str) -> tuple[bool, str, Optional[Dict[str, Any]]]:
     """Test Perplexity API connection."""
     async with httpx.AsyncClient() as client:
         try:
@@ -247,7 +338,7 @@ async def _test_perplexity(api_key: str) -> tuple[bool, str, Dict[str, Any] | No
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.1-sonar-small-128k-online",
+                    "model": "sonar",
                     "messages": [{"role": "user", "content": "Hi"}],
                     "max_tokens": 10
                 },
@@ -267,7 +358,7 @@ async def _test_perplexity(api_key: str) -> tuple[bool, str, Dict[str, Any] | No
             return False, f"Error: {str(e)}", None
 
 
-async def _test_openai(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
+async def _test_openai(api_key: str) -> tuple[bool, str, Optional[Dict[str, Any]]]:
     """Test OpenAI API connection."""
     async with httpx.AsyncClient() as client:
         try:
@@ -283,9 +374,19 @@ async def _test_openai(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
                 models = response.json()
                 return True, "Connection successful", {"model_count": len(models.get("data", []))}
             elif response.status_code == 401:
-                return False, "Invalid API key", {"status_code": 401}
+                # Try to get more detailed error from response
+                try:
+                    error_detail = response.json()
+                    error_msg = error_detail.get("error", {}).get("message", "Invalid API key")
+                    return False, f"Invalid API key: {error_msg}", {"status_code": 401, "detail": error_detail}
+                except:
+                    return False, "Invalid API key (401 Unauthorized)", {"status_code": 401}
             else:
-                return False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code}
+                try:
+                    error_data = response.json()
+                    return False, f"Error {response.status_code}: {error_data}", {"status_code": response.status_code, "response": error_data}
+                except:
+                    return False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code}
 
         except httpx.TimeoutException:
             return False, "Request timeout", None
@@ -293,7 +394,7 @@ async def _test_openai(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
             return False, f"Error: {str(e)}", None
 
 
-async def _test_gemini(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
+async def _test_gemini(api_key: str) -> tuple[bool, str, Optional[Dict[str, Any]]]:
     """Test Gemini API connection."""
     async with httpx.AsyncClient() as client:
         try:
@@ -319,7 +420,7 @@ async def _test_gemini(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
             return False, f"Error: {str(e)}", None
 
 
-async def _test_openrouter(api_key: str) -> tuple[bool, str, Dict[str, Any] | None]:
+async def _test_openrouter(api_key: str) -> tuple[bool, str, Optional[Dict[str, Any]]]:
     """Test OpenRouter API connection."""
     async with httpx.AsyncClient() as client:
         try:
@@ -338,6 +439,41 @@ async def _test_openrouter(api_key: str) -> tuple[bool, str, Dict[str, Any] | No
                 return False, "Invalid API key", {"status_code": 401}
             else:
                 return False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code}
+
+        except httpx.TimeoutException:
+            return False, "Request timeout", None
+        except Exception as e:
+            return False, f"Error: {str(e)}", None
+
+
+async def _test_kimi(api_key: str) -> tuple[bool, str, Optional[Dict[str, Any]]]:
+    """Test Kimi (Moonshot AI) API connection."""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                "https://api.moonshot.ai/v1/models",
+                headers={
+                    "Authorization": f"Bearer {api_key}"
+                },
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                models = response.json()
+                return True, "Connection successful", {"model_count": len(models.get("data", []))}
+            elif response.status_code == 401:
+                try:
+                    error_detail = response.json()
+                    error_msg = error_detail.get("error", {}).get("message", "Invalid API key")
+                    return False, f"Invalid API key: {error_msg}", {"status_code": 401, "detail": error_detail}
+                except:
+                    return False, "Invalid API key (401 Unauthorized)", {"status_code": 401}
+            else:
+                try:
+                    error_data = response.json()
+                    return False, f"Error {response.status_code}: {error_data}", {"status_code": response.status_code, "response": error_data}
+                except:
+                    return False, f"Unexpected response: {response.status_code}", {"status_code": response.status_code}
 
         except httpx.TimeoutException:
             return False, "Request timeout", None

@@ -11,9 +11,9 @@ from app.database import Base
 class UserRole(str, enum.Enum):
     """User roles within an organization."""
 
-    ADMIN = "admin"
-    MEMBER = "member"
-    VIEWER = "viewer"
+    admin = "admin"
+    member = "member"
+    viewer = "viewer"
 
 
 class User(Base):
@@ -27,7 +27,16 @@ class User(Base):
 
     # Organization
     org_id = Column(String, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True)
-    role = Column(SQLEnum(UserRole), default=UserRole.MEMBER, nullable=False)
+    role = Column(
+        SQLEnum(
+            UserRole,
+            name="user_role",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x]
+        ),
+        default=UserRole.member,
+        nullable=False
+    )
 
     # Auth
     email_verified = Column(DateTime(timezone=True), nullable=True)

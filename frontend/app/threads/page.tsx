@@ -1,24 +1,57 @@
 'use client'
 
-import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
+import { apiFetch, ApiError } from '@/lib/api'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Send, Copy, CheckCircle, AlertCircle, Square } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { TypingIndicator } from '@/components/typing-indicator'
 
 type Provider = 'perplexity' | 'openai' | 'gemini' | 'openrouter'
+type ScopeOption = 'private' | 'shared'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  provider?: Provider
   timestamp: Date
+  provider?: Provider
+  model?: string
+  reason?: string
+}
+
+interface RouterResponse {
+  provider: Provider
+  model: string
+  reason: string
+}
+
+interface SendMessageResponse {
+  user_message: {
+    id: string
+    content: string
+    role: string
+    created_at: string
+  }
+  assistant_message: {
+    id: string
+    content: string
+    role: string
+    created_at: string
+    provider?: string
+    model?: string
+  }
 }
 
 const PROVIDER_COLORS: Record<Provider, string> = {
-  perplexity: 'bg-purple-100 text-purple-800 border-purple-200',
-  openai: 'bg-green-100 text-green-800 border-green-200',
-  gemini: 'bg-blue-100 text-blue-800 border-blue-200',
-  openrouter: 'bg-orange-100 text-orange-800 border-orange-200',
+  perplexity: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  openai: 'bg-green-500/20 text-green-300 border-green-500/30',
+  gemini: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  openrouter: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = {
@@ -29,183 +62,456 @@ const PROVIDER_LABELS: Record<Provider, string> = {
 }
 
 export default function ThreadsPage() {
-  const { data: session, status } = useSession()
-  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [selectedProvider, setSelectedProvider] = useState<Provider>('perplexity')
+  const [threadId, setThreadId] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [scope, setScope] = useState<ScopeOption>('private')
+  const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [streamingEnabled, setStreamingEnabled] = useState(true)
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
+  const [streamingContent, setStreamingContent] = useState('')
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const orgId = 'org_demo' // Dev mode: use demo org
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/signin')
+    scrollToBottom()
+  }, [messages])
+
+  const handleCancelRequest = async () => {
+    if (currentRequestId) {
+      try {
+        await apiFetch(`/threads/cancel/${currentRequestId}`, orgId, {
+          method: 'POST',
+        })
+      } catch (err) {
+        console.error('Failed to cancel request:', err)
+      }
     }
-  }, [status, router])
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    setSending(false)
+    setCurrentRequestId(null)
+    setStreamingContent('')
+  }
 
   const handleSendMessage = async () => {
-    if (!input.trim() || sending) return
+    const trimmed = input.trim()
+    if (!trimmed || sending) return
 
-    const userMessage: Message = {
-      id: `msg_${Date.now()}`,
+    setError(null)
+    setRateLimitMessage(null)
+
+    const optimisticId = `msg_${Date.now()}`
+    const contextSize = messages.length
+    const optimisticMessage: Message = {
+      id: optimisticId,
       role: 'user',
-      content: input.trim(),
+      content: trimmed,
       timestamp: new Date(),
     }
 
-    setMessages([...messages, userMessage])
+    setMessages((prev) => [...prev, optimisticMessage])
     setInput('')
     setSending(true)
 
-    // TODO Phase 2: Replace with actual API call to /threads/{id}/messages
-    // Simulating response for Phase 1 dogfooding
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: `msg_${Date.now() + 1}`,
-        role: 'assistant',
-        content: `[Phase 1 Stub] This is a simulated response from ${PROVIDER_LABELS[selectedProvider]}. In Phase 2, this will be a real LLM response using your configured API keys.`,
-        provider: selectedProvider,
-        timestamp: new Date(),
+    try {
+      let currentThreadId = threadId
+      if (!currentThreadId) {
+        const threadResponse = await apiFetch('/threads/', orgId, {
+          method: 'POST',
+          body: JSON.stringify({
+            title: trimmed.substring(0, 50),
+          }),
+        })
+        const threadData = await threadResponse.json()
+        currentThreadId = threadData.thread_id
+        setThreadId(currentThreadId)
       }
-      setMessages((prev) => [...prev, assistantMessage])
-      setSending(false)
-    }, 1000)
-  }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
+      const routerResponse = await apiFetch('/router/choose', orgId, {
+        method: 'POST',
+        body: JSON.stringify({
+          message: trimmed,
+          context_size: contextSize,
+          thread_id: currentThreadId,
+        }),
+      })
+
+      const routerData: RouterResponse = await routerResponse.json()
+      const chosenProvider = routerData.provider
+
+      if (streamingEnabled) {
+        // Use streaming endpoint
+        abortControllerRef.current = new AbortController()
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
+        
+        const response = await fetch(`${apiUrl}/threads/${currentThreadId}/messages/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-org-id': orgId,
+          },
+          body: JSON.stringify({
+            content: trimmed,
+            role: 'user',
+            provider: chosenProvider,
+            model: routerData.model,
+            reason: routerData.reason,
+            scope,
+          }),
+          signal: abortControllerRef.current.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let assistantContent = ''
+        let assistantMessageId = ''
+        let requestId = ''
+
+        // Add streaming placeholder message
+        const streamingMsgId = `streaming_${Date.now()}`
+        setMessages((prev) => [...prev, {
+          id: streamingMsgId,
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          provider: chosenProvider,
+          model: routerData.model,
+          reason: routerData.reason,
+        }])
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+
+            // Parse SSE frames (separated by \n\n)
+            let idx
+            while ((idx = buffer.indexOf('\n\n')) >= 0) {
+              const frame = buffer.slice(0, idx)
+              buffer = buffer.slice(idx + 2)
+
+              let event = 'message'
+              let data = '{}'
+
+              // Parse event and data lines
+              for (const line of frame.split('\n')) {
+                if (line.startsWith('event:')) {
+                  event = line.slice(6).trim()
+                } else if (line.startsWith('data:')) {
+                  data = line.slice(5).trim()
+                }
+              }
+
+              try {
+                const json = data ? JSON.parse(data) : {}
+
+                // Handle meta events (including TTFT)
+                if (event === 'meta' && json.ttft_ms) {
+                  // TTFT received - could log or display
+                  console.log(`TTFT: ${json.ttft_ms}ms`)
+                }
+
+                // Handle delta events
+                if (event === 'delta' && json.delta) {
+                  assistantContent += json.delta
+                  setStreamingContent(assistantContent)
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === streamingMsgId
+                        ? { ...msg, content: assistantContent }
+                        : msg
+                    )
+                  )
+                }
+
+                // Handle done event
+                if (event === 'done') {
+                  if (json.message?.id) {
+                    assistantMessageId = json.message.id
+                  }
+                  break
+                }
+
+                // Handle error event
+                if (event === 'error') {
+                  throw new Error(json.error || 'Stream error')
+                }
+
+                // Handle cancelled event
+                if (event === 'cancelled') {
+                  setMessages((prev) => prev.filter((msg) => msg.id !== streamingMsgId))
+                  return
+                }
+
+                // Legacy: handle old format
+                if (json.type === 'request_id') {
+                  requestId = json.request_id
+                  setCurrentRequestId(requestId)
+                } else if (json.type === 'content') {
+                  assistantContent += json.content
+                  setStreamingContent(assistantContent)
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === streamingMsgId
+                        ? { ...msg, content: assistantContent }
+                        : msg
+                    )
+                  )
+                } else if (json.type === 'done' && json.message?.id) {
+                  assistantMessageId = json.message.id
+                }
+              } catch (parseErr) {
+                console.error('Failed to parse SSE data:', parseErr)
+              }
+            }
+          }
+        }
+
+        // Update with final message ID
+        if (assistantMessageId) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMsgId
+                ? { ...msg, id: assistantMessageId }
+                : msg
+            )
+          )
+        }
+
+      } else {
+        // Use non-streaming endpoint (legacy)
+        const sendResponse = await apiFetch(`/threads/${currentThreadId}/messages`, orgId, {
+          method: 'POST',
+          body: JSON.stringify({
+            content: trimmed,
+            role: 'user',
+            provider: chosenProvider,
+            model: routerData.model,
+            reason: routerData.reason,
+            scope,
+          }),
+        })
+
+        const sendData: SendMessageResponse = await sendResponse.json()
+
+        const userFromServer: Message = {
+          id: sendData.user_message.id,
+          role: 'user',
+          content: sendData.user_message.content,
+          timestamp: new Date(sendData.user_message.created_at),
+        }
+
+        const assistantFromServer: Message = {
+          id: sendData.assistant_message.id,
+          role: 'assistant',
+          content: sendData.assistant_message.content,
+          timestamp: new Date(sendData.assistant_message.created_at),
+          provider: sendData.assistant_message.provider as Provider,
+          model: sendData.assistant_message.model,
+          reason: routerData.reason,
+        }
+
+        setMessages((prev) => {
+          const replaced = prev.map((msg) => (msg.id === optimisticId ? userFromServer : msg))
+          return [...replaced, assistantFromServer]
+        })
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // Request was cancelled
+        return
+      }
+      if (err instanceof ApiError) {
+        if (err.status === 429) {
+          setRateLimitMessage('Rate limit exceeded. Please try again later.')
+        } else {
+          setError(err.message)
+        }
+      } else {
+        setError('Failed to send message. Please try again.')
+      }
+      setMessages((prev) => prev.filter((msg) => msg.id !== optimisticId))
+    } finally {
+      setSending(false)
+      setCurrentRequestId(null)
+      setStreamingContent('')
+      abortControllerRef.current = null
     }
   }
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  if (!session) {
-    return null
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto h-screen flex flex-col">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Thread</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Phase 1 stub - Full threading in Phase 2
-          </p>
-        </div>
+    <div className="min-h-screen bg-background pt-24 pb-12">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-4xl font-bold text-foreground">Threads</h1>
+            <p className="text-muted-foreground">Cross-LLM conversation hub</p>
+          </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-500 text-lg">No messages yet</p>
-              <p className="text-gray-400 text-sm mt-2">
-                Start a conversation by typing a message below
-              </p>
+          {rateLimitMessage && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{rateLimitMessage}</AlertDescription>
+            </Alert>
+          )}
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex items-center justify-between p-4 bg-card border border-border rounded-lg">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <Label htmlFor="scope-toggle" className="text-sm font-medium">
+                  Forward Scope:
+                </Label>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm ${scope === 'private' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    Private only
+                  </span>
+                  <Switch
+                    id="scope-toggle"
+                    checked={scope === 'shared'}
+                    onCheckedChange={(checked) => setScope(checked ? 'shared' : 'private')}
+                  />
+                  <span className={`text-sm ${scope === 'shared' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    Allow shared
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Label htmlFor="streaming-toggle" className="text-sm font-medium">
+                  Streaming:
+                </Label>
+                <Switch
+                  id="streaming-toggle"
+                  checked={streamingEnabled}
+                  onCheckedChange={setStreamingEnabled}
+                  disabled={sending}
+                />
+              </div>
             </div>
-          ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+          </div>
+
+          <div className="flex flex-col h-[600px] bg-background rounded-lg border border-border overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {messages.length === 0 && (
+                <div className="text-center text-muted-foreground py-12">
+                  <p className="text-lg mb-2">Start a conversation</p>
+                  <p className="text-sm">Send a message to begin chatting with AI agents</p>
+                </div>
+              )}
+              {messages.map((message) => (
                 <div
-                  className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-gray-200'
-                  }`}
+                  key={message.id}
+                  className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {message.provider && (
-                    <div className="mb-2">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-                          PROVIDER_COLORS[message.provider]
-                        }`}
-                      >
-                        {PROVIDER_LABELS[message.provider]}
-                      </span>
+                  {message.role === 'assistant' && (
+                    <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0 text-accent text-sm font-bold">
+                      AI
                     </div>
                   )}
-                  <p className={message.role === 'user' ? 'text-white' : 'text-gray-900'}>
-                    {message.content}
-                  </p>
-                  <p
-                    className={`text-xs mt-2 ${
-                      message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
+                  <div
+                    className={`max-w-sm lg:max-w-md xl:max-w-lg p-4 rounded-lg group relative ${
+                      message.role === 'user'
+                        ? 'bg-accent text-primary rounded-br-none'
+                        : 'bg-card border border-border text-foreground rounded-bl-none'
                     }`}
                   >
-                    {message.timestamp.toLocaleTimeString()}
-                  </p>
+                    <p className="text-sm leading-relaxed">{message.content}</p>
+                    {message.provider && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${PROVIDER_COLORS[message.provider] || 'bg-gray-500/20 text-gray-300'}`}
+                        >
+                          {PROVIDER_LABELS[message.provider] || message.provider}
+                        </Badge>
+                        {message.reason && (
+                          <span className="text-xs text-muted-foreground">({message.reason})</span>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => copyToClipboard(message.content, message.id)}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-background/20 rounded"
+                      title="Copy message"
+                    >
+                      {copiedId === message.id ? (
+                        <CheckCircle size={16} className="text-green-500" />
+                      ) : (
+                        <Copy size={16} />
+                      )}
+                    </button>
+                  </div>
+                  {message.role === 'user' && (
+                    <div className="w-8 h-8 rounded-lg bg-primary text-background flex items-center justify-center flex-shrink-0 text-sm font-bold">
+                      U
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))
-          )}
-          {sending && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <div className="animate-pulse">●</div>
-                  <span className="text-gray-500 text-sm">Thinking...</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input */}
-        <div className="bg-white border-t border-gray-200 p-6">
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Provider
-            </label>
-            <div className="flex gap-2">
-              {(Object.keys(PROVIDER_LABELS) as Provider[]).map((provider) => (
-                <button
-                  key={provider}
-                  onClick={() => setSelectedProvider(provider)}
-                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                    selectedProvider === provider
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  {PROVIDER_LABELS[provider]}
-                </button>
               ))}
+              {sending && <TypingIndicator />}
+              <div ref={messagesEndRef} />
             </div>
-          </div>
 
-          <div className="flex gap-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
-              rows={2}
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-              disabled={sending}
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={!input.trim() || sending}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleSendMessage()
+              }}
+              className="border-t border-border p-4 bg-card/30"
             >
-              {sending ? 'Sending...' : 'Send'}
-            </button>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1 px-4 py-2 rounded-lg bg-input border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-0"
+                  disabled={sending}
+                />
+                {sending ? (
+                  <Button type="button" onClick={handleCancelRequest} variant="destructive" className="px-4">
+                    <Square size={18} />
+                  </Button>
+                ) : (
+                  <Button type="submit" disabled={!input.trim()} className="px-4">
+                    <Send size={18} />
+                  </Button>
+                )}
+              </div>
+            </form>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Note: This is a Phase 1 stub. Real LLM integration coming in Phase 2.
-          </p>
         </div>
       </div>
     </div>
   )
 }
+

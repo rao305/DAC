@@ -15,6 +15,7 @@ class ProviderType(str, enum.Enum):
     OPENAI = "openai"
     GEMINI = "gemini"
     OPENROUTER = "openrouter"
+    KIMI = "kimi"
 
 
 class ProviderKey(Base):
@@ -28,7 +29,15 @@ class ProviderKey(Base):
     org_id = Column(String, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Provider
-    provider = Column(SQLEnum(ProviderType), nullable=False)
+    provider = Column(
+        SQLEnum(
+            ProviderType,
+            name="provider_type",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x]
+        ),
+        nullable=False
+    )
 
     # Encrypted key (using Fernet encryption)
     encrypted_key = Column(LargeBinary, nullable=False)

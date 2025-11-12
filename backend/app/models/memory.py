@@ -28,7 +28,17 @@ class MemoryFragment(Base):
 
     # Memory content
     text = Column(Text, nullable=False)
-    tier = Column(SQLEnum(MemoryTier), default=MemoryTier.PRIVATE, nullable=False, index=True)
+    tier = Column(
+        SQLEnum(
+            MemoryTier,
+            name="memory_tier",
+            create_type=False,
+            values_callable=lambda x: [e.value for e in x]
+        ),
+        default=MemoryTier.PRIVATE,
+        nullable=False,
+        index=True
+    )
 
     # Vector embedding (store vector ID from Qdrant)
     vector_id = Column(String, nullable=True, index=True)
