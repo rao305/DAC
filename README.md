@@ -22,6 +22,14 @@ Multi-tenant B2B hub for cross-provider conversation threading (Perplexity, Open
 
 - `apps/web`: Next.js App Router, settings/providers, threads UI
 
-## Docs
+## 📚 Documentation
 
-- /docs/ARCHITECTURE.md (coming)
+Comprehensive documentation is available in the [`/docs`](./docs/) directory:
+
+- **[Documentation Home](./docs/README.md)** - Start here for an overview
+- **[System Design](./docs/SYSTEM_DESIGN.md)** - Architecture and design (coming)
+- **[Architecture](./docs/ARCHITECTURE.md)** - Technical details (coming)
+- **[API Reference](./docs/API_REFERENCE.md)** - API documentation (coming)
+- **[Quick Start Guide](./docs/QUICK_START_GUIDE.md)** - Get started quickly
+
+For phase-specific documentation, see [`/docs/PHASES/`](./docs/PHASES/).
