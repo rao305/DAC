@@ -66,6 +66,16 @@ def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]
     Routing: Query → Domain Detection → Specialist Selection → Response
     """
     message_lower = message.lower()
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # DOMAIN 0: SOCIAL GREETINGS (OpenAI Agent) - CHECK FIRST!
+    # ═══════════════════════════════════════════════════════════════════
+    # Hard override: Greetings → chat model (no web, no citations)
+    from app.services.intent_rules import is_social_greeting
+    if is_social_greeting(message):
+        provider = ProviderType.OPENAI
+        model = validate_and_get_model(provider, "gpt-4o-mini")
+        return provider.value, model, "Social greeting (OpenAI GPT-4o-mini - conversational, no citations)"
 
     # ═══════════════════════════════════════════════════════════════════
     # DOMAIN 0: LONG-CONTEXT CREATIVE WRITING (Kimi Agent) - CHECK FIRST!

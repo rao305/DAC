@@ -41,9 +41,9 @@ FALLBACK_LADDERS: Dict[IntentType, List[Tuple[ProviderType, str, str]]] = {
         (ProviderType.PERPLEXITY, "sonar", "Final: General fallback"),
     ],
     IntentType.SOCIAL_CHAT: [
-        (ProviderType.PERPLEXITY, "sonar", "Primary: Web-grounded chat"),
+        (ProviderType.OPENAI, "gpt-4o-mini", "Primary: Conversational chat (no web, no citations)"),
         (ProviderType.GEMINI, "gemini-1.5-flash", "Failover: Fast chat"),
-        (ProviderType.OPENAI, "gpt-4o-mini", "Final: General fallback"),
+        (ProviderType.PERPLEXITY, "sonar", "Final: General fallback"),
     ],
     IntentType.EDITING_WRITING: [
         (ProviderType.PERPLEXITY, "sonar", "Primary: Web-grounded editing"),

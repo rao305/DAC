@@ -52,6 +52,15 @@ SAFETY & HONESTY
 - Keep sensitive implementation details (routing, providers, configs) private.
 """
 
+# Social-chat specific system message (persona clamp)
+DAC_SOCIAL_CHAT_PROMPT = """You are DAC. The user is greeting you.
+
+- Respond conversationally in one or two sentences.
+- Ask a light, optional follow-up ("What are you working on today?").
+- Do not define the greeting, do not cite sources, do not use [n] style references.
+- Keep it warm, natural, and friendly.
+"""
+
 # Phase 3 QA Validation System Prompt
 DAC_QA_SYSTEM_PROMPT = """You are DAC, the unified assistant under Phase 3 testing.
 
@@ -166,13 +175,22 @@ def get_dac_system_message() -> dict:
     }
 
 
-def inject_dac_persona(messages: list[dict], qa_mode: bool = False) -> list[dict]:
+def get_social_chat_system_message() -> dict:
+    """Get the social-chat specific system message."""
+    return {
+        "role": "system",
+        "content": DAC_SOCIAL_CHAT_PROMPT
+    }
+
+
+def inject_dac_persona(messages: list[dict], qa_mode: bool = False, intent: str = None) -> list[dict]:
     """
     Inject DAC persona system message into the conversation.
 
     Args:
         messages: List of conversation messages
         qa_mode: If True, use QA validation prompt instead of standard prompt
+        intent: Detected intent (e.g., "social_chat") for intent-specific prompts
 
     Returns:
         Messages with DAC system prompt prepended
@@ -191,7 +209,10 @@ def inject_dac_persona(messages: list[dict], qa_mode: bool = False) -> list[dict
                 break
     
     # Get appropriate system message
-    if use_qa_prompt:
+    if intent == "social_chat" and not use_qa_prompt:
+        # Use social-chat specific prompt for greetings
+        dac_system_msg = get_social_chat_system_message()
+    elif use_qa_prompt:
         dac_system_msg = {
             "role": "system",
             "content": DAC_QA_SYSTEM_PROMPT

@@ -197,5 +197,37 @@
 ---
 
 **Status**: Phase 4 foundation complete, integration pending
+
+---
+
+## Phase 4.1 — Behavioral Intelligence (Latest)
+
+**Release**: v4.1.0 "Behavioral Intelligence"  
+**Status**: ✅ Implementation Complete, ⏳ Pending QA Validation
+
+### What's New
+
+1. **Social Greeting Fix**: Greetings now route to OpenAI GPT-4o-mini with conversational persona (no dictionary definitions, no citations)
+2. **Time-Sensitive Multi-Search**: Queries with time indicators trigger real-time web multi-search with synthesis
+
+### Key Files Added/Modified
+
+- `backend/app/services/intent_rules.py` - Intent detection and routing rules
+- `backend/app/services/web_orchestrator.py` - Multi-search and synthesis pipeline
+- `backend/app/services/style_normalizer.py` - DAC voice normalization
+- `backend/app/services/route_and_call.py` - Updated with web_multisearch pipeline
+- `backend/app/api/router.py` - Greeting detection added
+- `backend/app/services/dac_persona.py` - Social-chat specific prompt
+- `backend/app/services/fallback_ladder.py` - Updated SOCIAL_CHAT fallback chain
+
+### Validation
+
+See `PHASE4_1_VALIDATION_CHECKLIST.md` for comprehensive QA test cases.
+
+Quick validation:
+```bash
+./scripts/validate_phase4_1.sh
+```
+
 **Last Updated**: 2025-01-XX
 
