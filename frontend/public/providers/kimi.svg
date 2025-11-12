@@ -1,0 +1,28 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Kimi Official Logo - White "K" on black textured background with blue dot -->
+  <defs>
+    <pattern id="texture" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="0.5" fill="white" opacity="0.1"/>
+      <circle cx="6" cy="4" r="0.3" fill="white" opacity="0.08"/>
+      <circle cx="4" cy="6" r="0.4" fill="white" opacity="0.12"/>
+    </pattern>
+    <linearGradient id="kimi-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <rect width="64" height="64" fill="url(#kimi-bg)" rx="8"/>
+  
+  <!-- Textured overlay (more dense in bottom right) -->
+  <rect width="64" height="64" fill="url(#texture)" rx="8" opacity="0.3"/>
+  <rect x="32" y="32" width="32" height="32" fill="url(#texture)" opacity="0.5" rx="0"/>
+  
+  <!-- White "K" letter -->
+  <path d="M 20 16 L 20 48 L 24 48 L 24 32 L 34 48 L 40 48 L 30 34 L 40 16 L 34 16 L 24 30 L 24 16 Z" 
+        fill="white"/>
+  
+  <!-- Blue teardrop dot (upper right) -->
+  <ellipse cx="44" cy="20" rx="4" ry="5" fill="#3b82f6"/>
+  <ellipse cx="44" cy="20" rx="2.5" ry="3" fill="#60a5fa"/>
+</svg>

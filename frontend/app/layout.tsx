@@ -1,34 +1,42 @@
-import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { ThemeProvider } from "next-themes"
-import { Toaster } from "sonner"
-import { Header } from "@/components/header"
 import "./globals.css"
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+})
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+})
 
 export const metadata: Metadata = {
-  title: "DAC - AI Agent Platform",
-  description: "Deploy autonomous agents at scale with confidence",
-  generator: "v0.app",
-  icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
+  title: "DAC - Intelligent LLM Routing Platform",
+  description: "Enterprise AI routing platform. Operate across LLMs with intelligent provider selection, unified context, and enterprise-grade security.",
+  keywords: ["AI", "LLM", "routing", "enterprise", "OpenAI", "Anthropic", "Gemini", "API"],
+  authors: [{ name: "DAC Team" }],
+  openGraph: {
+    title: "DAC - Intelligent LLM Routing Platform",
+    description: "Enterprise AI routing platform. Operate across LLMs with intelligent provider selection, unified context, and enterprise-grade security.",
+    type: "website",
+    url: "https://dac.io",
+    images: [
       {
         url: "/icon.svg",
-        type: "image/svg+xml",
+        width: 180,
+        height: 180,
+        alt: "DAC Logo",
       },
     ],
-    apple: "/apple-icon.png",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DAC - Intelligent LLM Routing Platform",
+    description: "Enterprise AI routing platform with intelligent provider selection and unified context.",
   },
 }
 
@@ -38,18 +46,35 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <Header />
-          {children}
-          <Toaster position="top-right" richColors closeButton />
-        </ThemeProvider>
+    <html lang="en" className="dark">
+      <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              name: "DAC",
+              applicationCategory: "BusinessApplication",
+              operatingSystem: "Web",
+              offers: {
+                "@type": "Offer",
+                price: "0",
+                priceCurrency: "USD",
+              },
+              description:
+                "Enterprise AI routing platform for intelligent LLM provider selection",
+            }),
+          }}
+        />
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+      >
+        <Header />
+        <main className="flex-1">{children}</main>
+        <Footer />
       </body>
     </html>
   )

@@ -1,5 +1,4 @@
 import React from 'react'
-import { Badge } from '@/components/ui/badge'
 
 interface TypingIndicatorProps {
   provider?: string
@@ -7,49 +6,84 @@ interface TypingIndicatorProps {
   reason?: string
 }
 
-const PROVIDER_COLORS: Record<string, string> = {
-  perplexity: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  openai: 'bg-green-500/20 text-green-300 border-green-500/30',
-  gemini: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  openrouter: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  kimi: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+/**
+ * Get loading status message based on reason/provider
+ */
+function getStatusMessage(reason?: string, provider?: string): string {
+  if (!reason) {
+    return 'Thinking'
+  }
+
+  const reasonLower = reason.toLowerCase()
+
+  // Check for web search / retrieval
+  if (reasonLower.includes('search') || reasonLower.includes('web') || reasonLower.includes('retrieval')) {
+    return 'Searching the web'
+  }
+
+  // Check for reasoning / math
+  if (reasonLower.includes('math') || reasonLower.includes('reasoning') || reasonLower.includes('calculate')) {
+    return 'Solving'
+  }
+
+  // Check for code generation
+  if (reasonLower.includes('code') || reasonLower.includes('programming') || reasonLower.includes('coding')) {
+    return 'Generating code'
+  }
+
+  // Check for writing / editing
+  if (reasonLower.includes('write') || reasonLower.includes('edit') || reasonLower.includes('draft')) {
+    return 'Writing'
+  }
+
+  // Default based on provider
+  if (provider?.toLowerCase() === 'perplexity') {
+    return 'Searching the web'
+  }
+
+  return 'Thinking'
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  perplexity: 'Perplexity',
-  openai: 'OpenAI',
-  gemini: 'Gemini',
-  openrouter: 'OpenRouter',
-  kimi: 'Kimi',
-}
-
+/**
+ * TypingIndicator - Gemini-inspired minimalist loading status with animation
+ * 
+ * Features:
+ * - Simple status text in light green/emerald
+ * - Animated dots for visual feedback (sequential bounce)
+ * - Left-aligned like AI messages
+ * - Clean, minimalist design
+ * - Context-aware status messages
+ */
 export function TypingIndicator({ provider, model, reason }: TypingIndicatorProps = {}) {
-  const providerColor = provider ? PROVIDER_COLORS[provider.toLowerCase()] || 'bg-muted/20 text-muted-foreground' : 'bg-muted/20 text-muted-foreground'
-  const providerLabel = provider ? PROVIDER_LABELS[provider.toLowerCase()] || provider : 'AI'
+  const statusMessage = getStatusMessage(reason, provider)
 
   return (
-    <div className="flex gap-4 justify-start" data-testid="skeleton-loader">
-      <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
-        <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-      </div>
-      <div className="space-y-2">
-        <div className="bg-card border border-border p-4 rounded-lg rounded-bl-none">
-          <div className="flex gap-1.5 items-center">
-            <div className="w-2 h-2 rounded-full bg-muted animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-2 h-2 rounded-full bg-muted animate-bounce" style={{ animationDelay: '150ms' }} />
-            <div className="w-2 h-2 rounded-full bg-muted animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-        </div>
-        {provider && (
-          <div className="flex gap-2 items-center text-xs">
-            <Badge variant="outline" className={providerColor}>
-              {providerLabel}
-            </Badge>
-            {reason && (
-              <span className="text-muted-foreground">({reason})</span>
-            )}
-          </div>
-        )}
+    <div className="flex justify-start" data-testid="typing-indicator">
+      <div className="flex items-center gap-1 text-sm text-emerald-400/80 font-medium">
+        <span>{statusMessage}</span>
+        <span className="flex items-center gap-1 ml-1">
+          <span 
+            className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/80"
+            style={{ 
+              animation: 'typing 1.4s ease-in-out infinite',
+              animationDelay: '0ms'
+            }}
+          />
+          <span 
+            className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/80"
+            style={{ 
+              animation: 'typing 1.4s ease-in-out infinite',
+              animationDelay: '200ms'
+            }}
+          />
+          <span 
+            className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/80"
+            style={{ 
+              animation: 'typing 1.4s ease-in-out infinite',
+              animationDelay: '400ms'
+            }}
+          />
+        </span>
       </div>
     </div>
   )

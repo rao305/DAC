@@ -9,7 +9,6 @@ import { MessageBubble, type Message } from '@/components/message-bubble'
 import { MessageComposer, type FileAttachment } from '@/components/message-composer'
 import { SettingsPanel } from '@/components/settings-panel'
 import { TypingIndicator } from '@/components/typing-indicator'
-import { EmptyConversation } from '@/components/empty-conversation'
 import { ErrorBanner } from '@/components/error-banner'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeSwitcher } from '@/components/theme-switcher'
@@ -497,10 +496,10 @@ export default function ConversationsPage() {
       }
     >
       {/* Main conversation view */}
-      <div className="h-full flex flex-col overflow-hidden">
+      <div className="h-full flex flex-col overflow-hidden relative">
         {/* Header - Compact when no messages */}
         <div className={cn(
-          "border-b border-border px-6 flex items-center justify-between bg-zinc-900/60 backdrop-blur-xl supports-[backdrop-filter]:bg-zinc-900/40 flex-shrink-0",
+          "border-b border-border px-6 flex items-center justify-between bg-zinc-900/60 backdrop-blur-xl supports-[backdrop-filter]:bg-zinc-900/40 flex-shrink-0 z-10",
           messages.length === 0 && !isSending ? "py-2.5" : "py-4"
         )}>
           <div className="flex items-center gap-3">
@@ -544,7 +543,7 @@ export default function ConversationsPage() {
 
         {/* Error banner */}
         {error && (
-          <div className="p-4">
+          <div className="p-4 z-10">
             <ErrorBanner
               type={error.includes('Rate limit') ? 'ratelimit' : 'api'}
               message={error}
@@ -554,20 +553,12 @@ export default function ConversationsPage() {
           </div>
         )}
 
-        {/* Messages area - Gemini-inspired cascading layout */}
-        <div ref={scrollAreaRef} className="flex-1 relative overflow-hidden min-h-0">
-          {messages.length === 0 && !isSending ? (
-            // Centered empty state - no scroll area needed
-            <div className="h-full flex items-center justify-center p-6">
-              <div className="w-full max-w-3xl mx-auto">
-                <EmptyConversation onPromptSelect={handlePromptSelect} />
-              </div>
-            </div>
-          ) : (
-            // Conversation view with scroll
+        {/* Messages area - Cascades down from top when messages appear */}
+        {messages.length > 0 || isSending ? (
+          <div ref={scrollAreaRef} className="flex-1 relative overflow-hidden min-h-0">
             <ScrollArea className="h-full">
               <div 
-                className="p-6 space-y-6 transition-all duration-500 ease-out"
+                className="p-6 space-y-2 transition-all duration-500 ease-out max-w-4xl mx-auto"
                 role="log" 
                 aria-live="polite" 
                 aria-label="Conversation messages"
@@ -595,20 +586,21 @@ export default function ConversationsPage() {
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
-          )}
-        </div>
+          </div>
+        ) : null}
 
-        {/* Message composer - Gemini-inspired compact design */}
+        {/* Message composer - Centered when empty, bottom when messages exist */}
         <div className={cn(
-          "border-t border-border/50 bg-background/95 backdrop-blur-sm",
-          "transition-all duration-300",
-          messages.length === 0 && !isSending 
-            ? "px-6 py-4 flex items-center justify-center" 
-            : "px-6 py-4"
+          "transition-all duration-500 ease-out",
+          messages.length === 0 && !isSending
+            ? "absolute inset-0 flex items-center justify-center px-6 py-8 pointer-events-none"
+            : "border-t border-border/50 bg-background/95 backdrop-blur-sm px-6 py-4 flex-shrink-0"
         )}>
           <div className={cn(
-            "w-full transition-all duration-300",
-            messages.length === 0 && !isSending ? "max-w-2xl" : "max-w-full"
+            "w-full transition-all duration-500 ease-out",
+            messages.length === 0 && !isSending 
+              ? "max-w-2xl pointer-events-auto" 
+              : "max-w-4xl mx-auto"
           )}>
             <MessageComposer
               value={inputValue}

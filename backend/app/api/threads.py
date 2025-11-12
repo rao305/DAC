@@ -560,6 +560,11 @@ async def add_message(
             provider_response.content,
             request.provider.value
         )
+        
+        # Prepend thinking preamble for UI display
+        from app.services.thinking_preamble import generate_thinking_preamble
+        preamble = generate_thinking_preamble(request.content)
+        sanitized_content = preamble + sanitized_content
 
         # Save messages to DB (LEADER ONLY)
         user_msg, assistant_msg = await _save_turn_to_db(
@@ -966,6 +971,16 @@ async def add_message_streaming(
             async def gen():
                 full_text_parts = []
                 try:
+                    # Generate and stream thinking preamble first
+                    from app.services.thinking_preamble import generate_thinking_preamble
+                    preamble = generate_thinking_preamble(user_content)
+                    
+                    # Stream preamble (can stream as whole or character by character)
+                    # Streaming as whole is faster, character-by-character is smoother for UI animation
+                    full_text_parts.append(preamble)
+                    yield sse_event({"delta": preamble}, event="delta")
+                    
+                    # Now stream the actual LLM response
                     async for chunk in stream_iter:
                         full_text_parts.append(chunk)
                         yield sse_event({"delta": chunk}, event="delta")

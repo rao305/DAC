@@ -1,11 +1,12 @@
 'use client'
 
 import * as React from 'react'
-import { Send, Sparkles, Loader2, Paperclip, X, Image as ImageIcon, File } from 'lucide-react'
+import { Send, Sparkles, Loader2, Plus, X, Image as ImageIcon, File, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { AnimatedPlaceholder } from '@/components/animated-placeholder'
 
 export interface FileAttachment {
   id: string
@@ -297,60 +298,106 @@ export function MessageComposer({
           </div>
         )}
 
-        {/* Textarea - Gemini-inspired compact design */}
+        {/* Textarea - Gemini-inspired circular design */}
         <div className={cn(
-          'relative rounded-2xl border border-border/60 bg-background/50 backdrop-blur-sm transition-all',
-          isCompactMode ? 'px-4 py-3' : 'px-4 py-3',
+          'relative rounded-full border border-border/60 bg-background/50 backdrop-blur-sm transition-all',
+          isCompactMode ? 'px-4 py-2.5' : 'px-4 py-2.5',
           isFocused && 'ring-1 ring-accent/30 border-accent/50 bg-background shadow-sm',
           isDragging && 'border-emerald-500/50 bg-emerald-500/5',
-          disabled && 'opacity-50 cursor-not-allowed'
+          disabled && 'opacity-50 cursor-not-allowed',
+          'flex flex-col'
         )}>
-          <Textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            placeholder={isCompactMode ? "Ask DAC" : placeholder}
-            disabled={disabled || isLoading}
-            autoFocus={autoFocus}
-            className={cn(
-              'min-h-[44px] max-h-[200px] resize-none border-0 bg-transparent',
-              'text-sm leading-relaxed placeholder:text-muted-foreground/70',
-              'focus-visible:ring-0 focus-visible:ring-offset-0',
-              'px-0 py-0',
-              isCompactMode && 'text-base',
-              isOverLimit && 'text-destructive'
+          {/* Textarea area */}
+          <div className="relative flex-1 min-h-[32px]">
+            <Textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder=""
+              disabled={disabled || isLoading}
+              autoFocus={autoFocus}
+              className={cn(
+                'min-h-[32px] max-h-[200px] resize-none border-0 bg-transparent',
+                'text-sm leading-relaxed',
+                'focus-visible:ring-0 focus-visible:ring-offset-0',
+                'px-0 py-0',
+                isCompactMode && 'text-base',
+                isOverLimit && 'text-destructive'
+              )}
+              aria-label="Message input"
+              aria-describedby="character-count keyboard-hint"
+            />
+            
+            {/* Animated placeholder overlay - only show when empty and not focused */}
+            {!value && !isFocused && (
+              <div className="absolute left-0 top-1.5 pointer-events-none">
+                <AnimatedPlaceholder className="text-sm" />
+              </div>
             )}
-            aria-label="Message input"
-            aria-describedby="character-count keyboard-hint"
-          />
+          </div>
 
-          {/* Action buttons inside input (Gemini-style) */}
-          <div className="absolute right-2 bottom-2 flex items-center gap-1">
-            {!isLoading && canSubmit && (
-              <Button
-                type="submit"
-                size="sm"
-                className="h-7 px-3 text-xs bg-emerald-500 hover:bg-emerald-600 text-white"
-                aria-label="Send message"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </Button>
-            )}
-            {isLoading && onCancel && (
+          {/* Bottom row controls - Gemini style */}
+          <div className="flex items-center justify-between mt-1 pt-1 border-t border-border/30">
+            {/* Left side: + button and Auto mode */}
+            <div className="flex items-center gap-2">
+              {/* Plus button for attachments */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.txt,.doc,.docx,.csv,.json"
+                onChange={handleFileInput}
+                className="hidden"
+                aria-label="Upload file"
+              />
               <Button
                 type="button"
-                size="sm"
                 variant="ghost"
-                onClick={onCancel}
-                className="h-7 px-3 text-xs"
-                aria-label="Cancel"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || isLoading}
+                className="h-7 w-7 p-0 hover:bg-muted/50"
+                aria-label="Add file"
+                title="Add file or image"
               >
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Plus className="w-4 h-4" />
               </Button>
-            )}
+
+              {/* Auto mode badge */}
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                <span className="text-xs font-medium text-emerald-400">Auto mode</span>
+                <ChevronDown className="w-3 h-3 text-emerald-400/70" />
+              </div>
+            </div>
+
+            {/* Right side: Send button */}
+            <div className="flex items-center">
+              {!isLoading && canSubmit && (
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="h-7 w-7 p-0 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full"
+                  aria-label="Send message"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </Button>
+              )}
+              {isLoading && onCancel && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={onCancel}
+                  className="h-7 w-7 p-0"
+                  aria-label="Cancel"
+                >
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -385,31 +432,6 @@ export function MessageComposer({
           </div>
         )}
 
-        {/* File attachment button - only show in normal mode */}
-        {!isCompactMode && (
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,.pdf,.txt,.doc,.docx,.csv,.json"
-              onChange={handleFileInput}
-              className="hidden"
-              aria-label="Upload file"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || isLoading}
-              aria-label="Attach file"
-              title="Attach file or image"
-            >
-              <Paperclip className="w-4 h-4" />
-            </Button>
-          </div>
-        )}
       </div>
     </form>
   )

@@ -1,0 +1,23 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Anthropic Official Logo - White "A" with dot on blue circle -->
+  <defs>
+    <radialGradient id="anthropic-blue" cx="50%" cy="30%">
+      <stop offset="0%" style="stop-color:#4285f4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1967d2;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Blue circle background -->
+  <circle cx="32" cy="32" r="28" fill="url(#anthropic-blue)"/>
+  
+  <!-- White "A" letter -->
+  <path d="M 32 18 L 24 46 L 28 46 L 30 38 L 34 38 L 36 46 L 40 46 L 32 18 Z" 
+        fill="white"/>
+  
+  <!-- Crossbar -->
+  <path d="M 30 32 L 34 32 L 32 24 Z" 
+        fill="url(#anthropic-blue)"/>
+  
+  <!-- Small white dot above A -->
+  <circle cx="32" cy="20" r="2" fill="white"/>
+</svg>

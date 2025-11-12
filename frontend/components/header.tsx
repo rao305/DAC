@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/logo"
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -13,12 +14,7 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl">
-            <div className="w-8 h-8 bg-accent rounded-sm flex items-center justify-center">
-              <span className="text-primary font-bold">D</span>
-            </div>
-            <span className="text-foreground">DAC</span>
-          </Link>
+          <Logo size="md" href="/" />
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-8">
@@ -37,9 +33,9 @@ export function Header() {
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
-            <Link href="/settings">
+            <Link href="/pricing">
               <Button variant="ghost" size="sm">
-                Settings
+                Pricing
               </Button>
             </Link>
             <Link href="/login">
@@ -47,7 +43,7 @@ export function Header() {
                 Sign In
               </Button>
             </Link>
-            <Link href="/">
+            <Link href="/conversations">
               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
                 Start Chat
               </Button>
@@ -76,9 +72,9 @@ export function Header() {
                 Docs
               </Link>
             <div className="space-y-2 pt-2">
-              <Link href="/settings" className="block">
+              <Link href="/pricing" className="block">
                 <Button variant="ghost" size="sm" className="w-full">
-                  Settings
+                  Pricing
                 </Button>
               </Link>
               <Link href="/login" className="block">
@@ -86,7 +82,7 @@ export function Header() {
                   Sign In
                 </Button>
               </Link>
-              <Link href="/" className="block">
+              <Link href="/conversations" className="block">
                 <Button size="sm" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
                   Start Chat
                 </Button>

@@ -76,69 +76,11 @@ export function EmptyConversation({
               Ask DAC anything
             </h2>
             <p className="text-muted-foreground/70 max-w-md mx-auto text-xs leading-relaxed">
-              Choose from the examples below or type your own message to get started with AI-powered
-              assistance across multiple LLM providers.
+              Type your message to get started with AI-powered assistance across multiple LLM providers.
             </p>
           </div>
         </div>
 
-        {/* Example prompts */}
-        {showExamples && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 justify-center">
-              <Sparkles className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Try these examples
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {EXAMPLE_PROMPTS.map((example, index) => (
-                <Card
-                  key={index}
-                  className={cn(
-                    'cursor-pointer transition-all duration-300',
-                    'hover:bg-accent/30 hover:border-accent/50 hover:shadow-md hover:scale-[1.01]',
-                    'group border-border/40 bg-card/40 backdrop-blur-sm',
-                    'animate-in fade-in slide-in-from-bottom-4'
-                  )}
-                  style={{ animationDelay: `${index * 30}ms` }}
-                  onClick={() => onPromptSelect?.(example.prompt)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      onPromptSelect?.(example.prompt)
-                    }
-                  }}
-                  aria-label={`Use example prompt: ${example.title}`}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-lg bg-accent/30 text-accent-foreground group-hover:bg-accent group-hover:text-primary transition-colors flex-shrink-0">
-                        {example.icon}
-                      </div>
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="text-sm font-semibold text-foreground">
-                            {example.title}
-                          </h4>
-                          <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
-                            {example.category}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {example.prompt}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Capabilities - Shrunk stats like Gemini */}
         <div className="pt-3 border-t border-border/30">

@@ -94,7 +94,7 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        'flex gap-3 group',
+        'flex gap-2 group',
         isUser ? 'justify-end' : 'justify-start',
         className
       )}
@@ -121,7 +121,7 @@ export function MessageBubble({
       )}
 
       {/* Message content */}
-      <div className={cn('flex flex-col gap-1.5', isUser ? 'items-end' : 'items-start')}>
+      <div className={cn('flex flex-col gap-0.5', isUser ? 'items-end' : 'items-start')}>
         {/* Header: Name and timestamp */}
         <div className="flex items-center gap-2 px-1">
           {!isUser && (
@@ -164,7 +164,7 @@ export function MessageBubble({
           </div>
 
           {/* Content */}
-          <div className="p-4">
+          <div className="p-3">
             {/* Attachments */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-3 space-y-2">
