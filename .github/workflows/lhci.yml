@@ -1,0 +1,26 @@
+name: lighthouse-ci
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  lhci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+      - name: Start frontend server
+        working-directory: ./frontend
+        run: |
+          npm run start &
+          npx wait-on http://localhost:3000 -t 60000
+      - name: Run Lighthouse CI
+        working-directory: ./frontend
+        run: npx @lhci/cli@0.14.x autorun --config=./lighthouserc.json

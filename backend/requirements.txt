@@ -1,0 +1,40 @@
+# FastAPI & Server
+fastapi
+uvicorn[standard]
+python-multipart
+firebase-admin
+
+# Database
+asyncpg
+sqlalchemy[asyncio]
+alembic
+
+# Vector DB
+qdrant-client
+
+# Redis
+upstash-redis
+
+# Auth & Security
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+cryptography
+
+# LLM Providers
+openai
+google-generativeai
+httpx[http2]
+
+# Utilities
+pydantic
+pydantic-settings
+
+# Stripe
+stripe
+
+# Development
+pytest
+pytest-asyncio
+black
+ruff

@@ -1,0 +1,158 @@
+[
+  {
+    "name": "purdue_cs_ranking",
+    "history": [
+      {"role": "user", "content": "what is purdue university"},
+      {"role": "assistant", "content": "Purdue University is a public research university located in West Lafayette, Indiana. It's known for its strong engineering and computer science programs."}
+    ],
+    "user_message": "what is the computer science ranking at that university",
+    "topics": [
+      {"name": "Purdue University", "type": "university", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "rewritten": "What is Purdue University's current Computer Science ranking?",
+      "AMBIGUOUS": false,
+      "should_contain": ["purdue university", "computer science"]
+    }
+  },
+  {
+    "name": "two_universities_ambiguous",
+    "history": [
+      {"role": "user", "content": "compare purdue university and indiana university"},
+      {"role": "assistant", "content": "Purdue University and Indiana University are both public universities in Indiana. Purdue is known for engineering, while IU is known for business and liberal arts."}
+    ],
+    "user_message": "what is the computer science ranking at that university",
+    "topics": [
+      {"name": "Purdue University", "type": "university", "lastSeen": "2025-01-12T10:00:00Z"},
+      {"name": "Indiana University", "type": "university", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "AMBIGUOUS": true,
+      "candidates": ["Purdue University", "Indiana University"]
+    }
+  },
+  {
+    "name": "product_coref",
+    "history": [
+      {"role": "user", "content": "I'm building with your DAC platform"},
+      {"role": "assistant", "content": "DAC (Distributed AI Coordinator) is a unified AI assistant platform that intelligently routes queries across multiple LLM providers."}
+    ],
+    "user_message": "does it support multiple llms in one context?",
+    "topics": [
+      {"name": "DAC", "type": "product", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "rewritten": "Does DAC support using multiple LLMs in one context?",
+      "AMBIGUOUS": false,
+      "should_contain": ["dac", "multiple", "llm"]
+    }
+  },
+  {
+    "name": "company_reference",
+    "history": [
+      {"role": "user", "content": "Tell me about OpenAI"},
+      {"role": "assistant", "content": "OpenAI is an AI research company known for developing GPT models and ChatGPT."}
+    ],
+    "user_message": "what is their latest model?",
+    "topics": [
+      {"name": "OpenAI", "type": "company", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "rewritten": "What is OpenAI's latest model?",
+      "AMBIGUOUS": false,
+      "should_contain": ["openai", "latest", "model"]
+    }
+  },
+  {
+    "name": "no_context_no_rewrite",
+    "history": [],
+    "user_message": "what is the capital of France?",
+    "topics": [],
+    "expected": {
+      "rewritten": "what is the capital of France?",
+      "AMBIGUOUS": false,
+      "should_contain": ["capital", "france"]
+    }
+  },
+  {
+    "name": "that_tool_reference",
+    "history": [
+      {"role": "user", "content": "I'm using Python for data analysis"},
+      {"role": "assistant", "content": "Python is a great choice for data analysis with libraries like pandas and numpy."}
+    ],
+    "user_message": "can that tool handle large datasets?",
+    "topics": [
+      {"name": "Python", "type": "tool", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "rewritten": "Can Python handle large datasets?",
+      "AMBIGUOUS": false,
+      "should_contain": ["python", "large", "datasets"]
+    }
+  },
+  {
+    "name": "three_companies_ambiguous",
+    "history": [
+      {"role": "user", "content": "Compare OpenAI, Anthropic, and Google"},
+      {"role": "assistant", "content": "OpenAI, Anthropic, and Google are major AI companies..."}
+    ],
+    "user_message": "which one has the best model?",
+    "topics": [
+      {"name": "OpenAI", "type": "company", "lastSeen": "2025-01-12T10:00:00Z"},
+      {"name": "Anthropic", "type": "company", "lastSeen": "2025-01-12T10:00:00Z"},
+      {"name": "Google", "type": "company", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "AMBIGUOUS": true,
+      "candidates": ["OpenAI", "Anthropic", "Google"]
+    }
+  },
+  {
+    "name": "preserve_constraints",
+    "history": [
+      {"role": "user", "content": "Tell me about MIT"},
+      {"role": "assistant", "content": "MIT is a prestigious research university..."}
+    ],
+    "user_message": "what are the top 5 programs at that university as of 2024?",
+    "topics": [
+      {"name": "MIT", "type": "university", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "rewritten": "What are the top 5 programs at MIT as of 2024?",
+      "AMBIGUOUS": false,
+      "should_contain": ["mit", "top 5", "2024"]
+    }
+  },
+  {
+    "name": "stale_context_ignored",
+    "history": [
+      {"role": "user", "content": "Tell me about Stanford"},
+      {"role": "assistant", "content": "Stanford University is..."}
+    ],
+    "user_message": "what is the ranking at that university?",
+    "topics": [
+      {"name": "Stanford", "type": "university", "lastSeen": "2024-01-01T00:00:00Z"}
+    ],
+    "expected": {
+      "AMBIGUOUS": false,
+      "should_contain": ["stanford"]
+    }
+  },
+  {
+    "name": "multi_word_pronoun",
+    "history": [
+      {"role": "user", "content": "I'm interested in Carnegie Mellon University"},
+      {"role": "assistant", "content": "Carnegie Mellon University is known for computer science..."}
+    ],
+    "user_message": "what is that university's acceptance rate?",
+    "topics": [
+      {"name": "Carnegie Mellon University", "type": "university", "lastSeen": "2025-01-12T10:00:00Z"}
+    ],
+    "expected": {
+      "rewritten": "What is Carnegie Mellon University's acceptance rate?",
+      "AMBIGUOUS": false,
+      "should_contain": ["carnegie mellon", "acceptance rate"]
+    }
+  }
+]
+

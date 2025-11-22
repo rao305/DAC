@@ -1,0 +1,75 @@
+name: TTFT p95 Check
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ttft:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dac_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      
+      - name: Start backend (test profile)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dac_test
+          SECRET_KEY: test-secret-key
+          ENCRYPTION_KEY: test-encryption-key-32-bytes-long!!
+          QDRANT_URL: http://localhost:6333
+          QDRANT_API_KEY: test
+          UPSTASH_REDIS_URL: http://localhost:6379
+          UPSTASH_REDIS_TOKEN: test
+          STRIPE_SECRET_KEY: sk_test_test
+          STRIPE_PUBLISHABLE_KEY: pk_test_test
+          STRIPE_WEBHOOK_SECRET: whsec_test
+          STRIPE_PRICE_ID: price_test
+          PERPLEXITY_RPS: 5
+          PERPLEXITY_CONCURRENCY: 5
+          PERPLEXITY_BURST: 5
+          COALESCE_ENABLED: 1
+          STREAM_FANOUT_ENABLED: 1
+          TTFT_PROVIDER: mock
+          TTFT_MODEL: faststream-ttft
+        run: |
+          cd backend
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 >/tmp/api.log 2>&1 &
+          sleep 10
+          curl -f http://localhost:8000/health || (cat /tmp/api.log && exit 1)
+      
+      - name: Run TTFT suite
+        run: |
+          node sse_ttft_p95.mjs | tee /tmp/ttft.txt
+      
+      - name: Enforce p95 ≤ 1500ms
+        run: |
+          awk '/TTFT p95:/ {v=$3+0; print "TTFT p95:", v, "ms"; if (v>1500){print "❌ TTFT regression: p95=" v "ms > 1500ms"; exit 1} else {print "✅ TTFT p95 within threshold"}}' /tmp/ttft.txt
+

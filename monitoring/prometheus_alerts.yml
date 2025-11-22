@@ -1,0 +1,81 @@
+# Prometheus Alert Rules for DAC Phase 4
+# 
+# Install: Copy to Prometheus rules directory
+# Reference: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+
+groups:
+  - name: dac_phase4_canary
+    interval: 30s
+    rules:
+      # Error Rate Alert
+      - alert: DACErrorRateHigh
+        expr: rate(dac_errors_total[5m]) > 0.02
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "DAC error rate exceeded 2% for 5 minutes"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 2%)"
+          runbook: "https://github.com/your-org/dac/blob/main/PHASE4_INCIDENT_RUNBOOK.md"
+
+      # Latency Alert
+      - alert: DACLatencyHigh
+        expr: histogram_quantile(0.95, rate(dac_request_latency_seconds_bucket[5m])) > 7
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "DAC p95 latency exceeded 7s for 10 minutes"
+          description: "p95 latency is {{ $value }}s (threshold: 7s)"
+          runbook: "https://github.com/your-org/dac/blob/main/PHASE4_INCIDENT_RUNBOOK.md"
+
+      # Fallback Usage Alert
+      - alert: DACFallbackUsageHigh
+        expr: rate(dac_fallback_used_total[10m]) / rate(dac_requests_total[10m]) > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          component: router
+        annotations:
+          summary: "DAC fallback usage exceeded 15% for 10 minutes"
+          description: "Fallback rate is {{ $value | humanizePercentage }} (threshold: 15%)"
+          runbook: "https://github.com/your-org/dac/blob/main/PHASE4_INCIDENT_RUNBOOK.md"
+
+      # Cache Hit Rate Alert
+      - alert: DACCacheHitLow
+        expr: rate(dac_cache_hits_total[30m]) / rate(dac_requests_total[30m]) < 0.10
+        for: 30m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "DAC cache hit rate below 10% for 30 minutes"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+          runbook: "https://github.com/your-org/dac/blob/main/PHASE4_INCIDENT_RUNBOOK.md"
+
+      # Cost Alert
+      - alert: DACCostPerTurnHigh
+        expr: rate(dac_cost_usd_total[15m]) / rate(dac_requests_total[15m]) > 0.02
+        for: 15m
+        labels:
+          severity: warning
+          component: billing
+        annotations:
+          summary: "DAC cost per turn exceeded $0.02 for 15 minutes"
+          description: "Cost per turn is ${{ $value }} (threshold: $0.02)"
+          runbook: "https://github.com/your-org/dac/blob/main/PHASE4_INCIDENT_RUNBOOK.md"
+
+      # Provider Outage Alert
+      - alert: DACProviderOutage
+        expr: rate(dac_provider_errors_total{provider=~".+"}[5m]) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          component: provider
+        annotations:
+          summary: "DAC provider {{ $labels.provider }} error rate high"
+          description: "Provider {{ $labels.provider }} error rate is {{ $value | humanizePercentage }}"
+          runbook: "https://github.com/your-org/dac/blob/main/PHASE4_INCIDENT_RUNBOOK.md"
+

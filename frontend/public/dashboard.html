@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Multa Metrics Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+      background: #0b0b0c;
+      color: #e8e8ea;
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #9da3af;
+      margin-bottom: 24px;
+      font-size: 0.875rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #141417;
+      border: 1px solid #23232a;
+      border-radius: 16px;
+      padding: 20px;
+      transition: border-color 0.2s ease;
+    }
+    .card:hover {
+      border-color: #34343e;
+    }
+    .label {
+      color: #9da3af;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .value {
+      font-size: 32px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .unit {
+      font-size: 16px;
+      color: #9da3af;
+      margin-left: 4px;
+    }
+    .warn {
+      color: #f59e0b;
+    }
+    .bad {
+      color: #ef4444;
+    }
+    .good {
+      color: #10b981;
+    }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding: 12px 16px;
+      background: #141417;
+      border: 1px solid #23232a;
+      border-radius: 12px;
+      font-size: 0.875rem;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .error-state .status-dot {
+      background: #ef4444;
+    }
+    .timestamp {
+      color: #9da3af;
+      margin-left: auto;
+      font-size: 0.75rem;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #9da3af;
+    }
+    .error-message {
+      background: #2a1a1a;
+      border: 1px solid #441818;
+      border-radius: 12px;
+      padding: 16px;
+      color: #ef4444;
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Multa Metrics Dashboard</h1>
+    <div class="subtitle">Real-time performance metrics from /api/metrics/performance</div>
+
+    <div id="status" class="status-bar">
+      <div class="status-dot"></div>
+      <span>Live</span>
+      <span class="timestamp" id="timestamp">--</span>
+    </div>
+
+    <div id="error-container"></div>
+    <div id="cards" class="grid">
+      <div class="loading">Loading metrics...</div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = '/api/metrics/performance?last_n=100';
+    const REFRESH_INTERVAL = 5000; // 5 seconds
+
+    // SLO thresholds
+    const LIMITS = {
+      ttft: 1500,      // ms
+      latency: 6000,   // ms
+      queue: 1000,     // ms
+      err: 0.01        // 1%
+    };
+
+    function getStatusClass(value, limit, inverse = false) {
+      if (value == null) return '';
+      if (inverse) {
+        return value <= limit ? 'good' : value <= limit * 1.5 ? 'warn' : 'bad';
+      }
+      return value <= limit ? 'good' : value <= limit * 1.5 ? 'warn' : 'bad';
+    }
+
+    function formatNumber(n) {
+      if (typeof n !== 'number' || isNaN(n)) return '—';
+      return Math.round(n).toLocaleString();
+    }
+
+    function formatPercent(n) {
+      if (typeof n !== 'number' || isNaN(n)) return '—';
+      return (n * 100).toFixed(2);
+    }
+
+    async function fetchMetrics() {
+      try {
+        const response = await fetch(API_URL, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        renderMetrics(data);
+        clearError();
+        updateTimestamp();
+      } catch (error) {
+        console.error('Failed to fetch metrics:', error);
+        showError(error.message);
+      }
+    }
+
+    function renderMetrics(data) {
+      const container = document.getElementById('cards');
+
+      const ttft = data.ttft_ms?.p95;
+      const latency = data.latency_ms?.p95;
+      const queue = data.queue_wait_ms?.p95;
+      const errorRate = data.error_rate;
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="label">TTFT p95</div>
+          <div class="value ${getStatusClass(ttft, LIMITS.ttft)}">
+            ${formatNumber(ttft)}<span class="unit">ms</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label">Latency p95</div>
+          <div class="value ${getStatusClass(latency, LIMITS.latency)}">
+            ${formatNumber(latency)}<span class="unit">ms</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label">Queue Wait p95</div>
+          <div class="value ${getStatusClass(queue, LIMITS.queue)}">
+            ${formatNumber(queue)}<span class="unit">ms</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label">Error Rate</div>
+          <div class="value ${getStatusClass(errorRate, LIMITS.err)}">
+            ${formatPercent(errorRate)}<span class="unit">%</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label">Total Requests</div>
+          <div class="value">
+            ${formatNumber(data.total_requests)}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label">HTTP 429 Total</div>
+          <div class="value ${data.http_429_total > 0 ? 'warn' : 'good'}">
+            ${formatNumber(data.http_429_total || 0)}
+          </div>
+        </div>
+      `;
+    }
+
+    function showError(message) {
+      const container = document.getElementById('error-container');
+      container.innerHTML = `
+        <div class="error-message">
+          <strong>Error:</strong> ${message}
+        </div>
+      `;
+      document.getElementById('status').classList.add('error-state');
+    }
+
+    function clearError() {
+      document.getElementById('error-container').innerHTML = '';
+      document.getElementById('status').classList.remove('error-state');
+    }
+
+    function updateTimestamp() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString();
+      document.getElementById('timestamp').textContent = `Updated ${timeStr}`;
+    }
+
+    // Initial fetch
+    fetchMetrics();
+
+    // Periodic refresh
+    setInterval(fetchMetrics, REFRESH_INTERVAL);
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+    "name": "dac-typescript",
+    "version": "1.0.0",
+    "description": "DAC Multi-LLM TypeScript Stack",
+    "main": "backend/api/dacChat.ts",
+    "scripts": {
+        "dev": "tsx watch backend/api/dacChat.ts",
+        "build": "tsc",
+        "test": "tsx backend/tests/testDAC.ts",
+        "test:watch": "tsx watch backend/tests/testDAC.ts",
+        "lint": "eslint . --ext .ts,.tsx"
+    },
+    "dependencies": {
+        "clsx": "^2.1.0",
+        "framer-motion": "^11.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "@typescript-eslint/eslint-plugin": "^6.19.0",
+        "@typescript-eslint/parser": "^6.19.0",
+        "eslint": "^8.56.0",
+        "tsx": "^4.20.6",
+        "typescript": "^5.3.0"
+    }
+}

@@ -1,0 +1,41 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "commonjs",
+        "lib": [
+            "ES2022"
+        ],
+        "jsx": "react-jsx",
+        "outDir": "./dist",
+        "rootDir": "./",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "moduleResolution": "node",
+        "types": [
+            "node"
+        ],
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "frontend/*"
+            ],
+            "@/components/*": [
+                "frontend/components/*"
+            ],
+            "@/lib/*": [
+                "frontend/lib/*"
+            ]
+        }
+    },
+    "include": [
+        "backend/**/*",
+        "frontend/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

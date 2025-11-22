@@ -1,0 +1,23 @@
+# Node
+node_modules/
+.next/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Env & local
+.env
+.env.local
+.DS_Store
+
+# Docker
+data/
+backend/.env.backup
+src/.env.local.backup
+src/config.ts
+backend/test_*_keys.py
+backend/verify_api_key.py
+backend/firebase-service-account.json

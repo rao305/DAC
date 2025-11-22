@@ -1,0 +1,77 @@
+"use client"
+
+import { useState } from 'react'
+import { EnhancedSidebar } from '@/components/enhanced-sidebar'
+import { EnhancedChatInterface } from '@/components/enhanced-chat-interface'
+// import { useAuth } from '@/components/auth/auth-provider'
+
+interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  chainOfThought?: string
+  timestamp?: string
+  modelId?: string
+  modelName?: string
+  reasoningType?: 'coding' | 'analysis' | 'creative' | 'research' | 'conversation'
+  confidence?: number
+  processingTime?: number
+}
+
+interface ChatHistoryItem {
+  id: string
+  firstLine: string
+  timestamp: string
+}
+
+interface EnhancedConversationLayoutProps {
+  messages: Message[]
+  history: ChatHistoryItem[]
+  onSendMessage: (content: string) => void
+  onNewChat: () => void
+  onHistoryClick: (id: string) => void
+  isLoading: boolean
+  selectedModel: string
+  onModelSelect: (modelId: string) => void
+  onContinueWorkflow?: () => void
+}
+
+export function EnhancedConversationLayout({
+  messages,
+  history,
+  onSendMessage,
+  onNewChat,
+  onHistoryClick,
+  isLoading,
+  selectedModel,
+  onModelSelect,
+  onContinueWorkflow
+}: EnhancedConversationLayoutProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  // Removed auth - no user needed
+  const user = null
+
+  return (
+    <div className="flex h-screen w-full bg-zinc-900 text-zinc-50 overflow-hidden font-sans">
+      <EnhancedSidebar
+        isCollapsed={isCollapsed}
+        setIsCollapsed={setIsCollapsed}
+        history={history}
+        onNewChat={onNewChat}
+        onHistoryClick={onHistoryClick}
+        user={user}
+      />
+      <main className="flex-1 flex flex-col h-full relative transition-all duration-300 ease-in-out">
+        {/* No auth buttons needed */}
+        <EnhancedChatInterface
+          messages={messages}
+          onSendMessage={onSendMessage}
+          isLoading={isLoading}
+          selectedModel={selectedModel}
+          onModelSelect={onModelSelect}
+          onContinueWorkflow={onContinueWorkflow}
+        />
+      </main>
+    </div>
+  )
+}
