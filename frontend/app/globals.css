@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -153,5 +154,40 @@
 
   .animate-message-slide-up {
     animation: messageSlideUp 0.18s ease-out forwards;
+  }
+
+  /* KaTeX Math rendering styles for dark mode */
+  .katex {
+    color: inherit;
+  }
+  
+  .dark .katex {
+    color: var(--color-foreground);
+  }
+  
+  .dark .katex .accent-body {
+    color: var(--color-foreground) !important;
+  }
+  
+  .dark .katex .mord,
+  .dark .katex .mop,
+  .dark .katex .mrel,
+  .dark .katex .mbin,
+  .dark .katex .mpunct,
+  .dark .katex .mopen,
+  .dark .katex .mclose,
+  .dark .katex .minner {
+    color: var(--color-foreground) !important;
+  }
+  
+  /* Ensure math expressions are centered in display mode */
+  .katex-display {
+    text-align: center;
+    margin: 1em 0;
+  }
+  
+  /* Improve readability of fractions and complex expressions */
+  .katex .frac-line {
+    border-bottom-color: currentColor;
   }
 }

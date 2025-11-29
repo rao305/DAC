@@ -1,93 +1,97 @@
-# Query Rewriter Test Suite
+# Dynamic Router Tests
 
-Comprehensive test suite for the Query Rewriter and Disambiguation Assistant system.
-
-## Test Structure
-
-- `test_scenarios.json` - Test case matrix with 10 scenarios
-- `test_query_rewriter.py` - Unit tests for Query Rewriter
-- `test_disambiguation_assistant.py` - Unit tests for Disambiguation Assistant
-- `test_query_rewriter_integration.py` - Integration tests for full pipeline
+Comprehensive test suite for the dynamic routing system.
 
 ## Running Tests
 
-### Run All Tests
-
 ```bash
 cd backend
-pytest tests/
+pytest tests/test_dynamic_router_intent.py -v
+pytest tests/test_dynamic_router_scoring.py -v
+pytest tests/test_dynamic_router_integration.py -v
+
+# Run all router tests
+pytest tests/test_dynamic_router*.py -v
+
+# Run with coverage
+pytest tests/test_dynamic_router*.py --cov=app.services.dynamic_router --cov-report=html
 ```
 
-### Run Specific Test File
+## Test Structure
 
-```bash
-pytest tests/test_query_rewriter.py
-pytest tests/test_disambiguation_assistant.py
-pytest tests/test_query_rewriter_integration.py
-```
+### `test_dynamic_router_intent.py`
+Tests the router LLM intent classification:
+- Core task-type classification (chat, reasoning, coding, math, etc.)
+- Web/search detection edge cases
+- Priority detection (quality/speed/cost)
+- Token estimation
+- Robustness (invalid JSON, missing fields, etc.)
+- Edge cases (empty messages, non-English, emoji)
 
-### Run Specific Test
+### `test_dynamic_router_scoring.py`
+Tests the scoring logic:
+- Model ranking for different task types
+- Priority-based weighting (quality/speed/cost)
+- Context filtering
+- Capability matching
+- Score normalization
 
-```bash
-pytest tests/test_query_rewriter.py::TestQueryRewriter::test_resolves_that_university_to_purdue
-```
+### `test_dynamic_router_integration.py`
+End-to-end integration tests:
+- Full routing flow
+- Provider filtering
+- Epsilon-greedy exploration
+- Fallback behavior
+- Historical rewards
 
-### Run with Coverage
+## Test Coverage
 
-```bash
-pytest tests/ --cov=app.services.query_rewriter --cov=app.services.disambiguation_assistant --cov-report=html
-```
+The tests cover all the scenarios from the test plan:
 
-### Run Verbose
+1. ✅ Core task-type classification (Tests 1-9)
+2. ✅ Web/search detection (Tests 10-13)
+3. ✅ Priority tests (Tests 14-16)
+4. ✅ Token estimation & context limits (Tests 17-18)
+5. ✅ Router robustness (Tests 5.1-5.4)
+6. ✅ Multi-intent queries (Test 6.1-6.2)
+7. ✅ Language/weird input (Tests 7.1-7.3)
+8. ✅ Exploration behavior (Tests 19-20)
 
-```bash
-pytest tests/ -v
-```
+## Mocking
 
-## Test Scenarios
+The tests mock the OpenAI API calls to avoid:
+- Real API costs
+- Network dependencies
+- Non-deterministic behavior
 
-The test matrix includes:
-
-1. **purdue_cs_ranking** - Single university resolution
-2. **two_universities_ambiguous** - Ambiguity detection
-3. **product_coref** - Product pronoun resolution
-4. **company_reference** - Company pronoun resolution
-5. **no_context_no_rewrite** - No context handling
-6. **that_tool_reference** - Tool pronoun resolution
-7. **three_companies_ambiguous** - Multiple candidates
-8. **preserve_constraints** - Constraint preservation
-9. **stale_context_ignored** - Stale topic filtering
-10. **multi_word_pronoun** - Multi-word pronoun resolution
-
-## Test Categories
-
-- **Unit Tests**: Test individual components in isolation
-- **Integration Tests**: Test full pipeline flow
-- **Edge Cases**: Test error handling and boundary conditions
+All router LLM responses are mocked with expected JSON outputs.
 
 ## Adding New Tests
 
-1. Add scenario to `test_scenarios.json`
-2. Add unit test to appropriate test file
-3. Add integration test if needed
-4. Run tests to verify
+When adding new test cases:
 
-## Manual Testing
+1. Add to the appropriate test file based on what you're testing
+2. Mock the router LLM response if testing intent classification
+3. Use real scoring functions if testing scoring logic
+4. Use full routing flow if testing integration
 
-After automated tests pass, perform manual sanity checks:
+Example:
 
-1. **Unambiguous Resolution**:
-   - User: "what is purdue university"
-   - User: "what is the computer science ranking at that university"
-   - ✅ Should auto-resolve to Purdue
-
-2. **Ambiguity Detection**:
-   - User: "compare purdue university and indiana university"
-   - User: "what is the computer science ranking at that university"
-   - ✅ Should ask: "Which university did you mean?"
-
-3. **Product Coreference**:
-   - User: "I'm using your DAC platform"
-   - User: "can it call different llms in the same context?"
-   - ✅ Should rewrite to mention DAC explicitly
-
+```python
+@pytest.mark.asyncio
+async def test_my_new_scenario(self):
+    """Test description."""
+    user_message = "Your test prompt"
+    
+    mock_response = {
+        "content": '{"taskType": "coding", "requiresWeb": false, ...}'
+    }
+    
+    with patch("app.services.dynamic_router.intent.call_openai", new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = type("Response", (), mock_response)()
+        
+        intent = await get_router_intent(user_message, "")
+        
+        assert intent.task_type == "coding"
+        # ... more assertions
+```

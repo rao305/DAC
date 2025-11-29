@@ -9,11 +9,32 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { toast } from 'sonner'
 import { ensureConversationMetadata, updateConversationMetadata } from '@/lib/firestore-conversations'
 import { useUserConversations } from '@/hooks/use-user-conversations'
+import { useWorkflowStore } from '@/store/workflow-store'
+import { useCollaborationStream } from '@/hooks/use-collaboration-stream'
+
+interface ImageFile {
+  file?: File
+  url: string
+  id: string
+}
+
+interface CollaborationStage {
+  id: string
+  label: string
+  status: "pending" | "active" | "done"
+}
+
+interface CollaborationState {
+  mode: "thinking" | "streaming_final" | "complete"
+  stages: CollaborationStage[]
+  currentStageId?: string
+}
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  images?: ImageFile[]
   chainOfThought?: string
   timestamp?: string
   modelId?: string
@@ -21,6 +42,9 @@ interface Message {
   reasoningType?: 'coding' | 'analysis' | 'creative' | 'research' | 'conversation'
   confidence?: number
   processingTime?: number
+  // Collaboration state for live thinking bubbles
+  collaboration?: CollaborationState
+  [key: string]: any
 }
 
 interface ChatHistoryItem {
@@ -36,11 +60,41 @@ export default function ConversationPage() {
   const { orgId: authOrgId, accessToken, user } = useAuth()
   const orgId = authOrgId || 'org_demo'
   const { conversations: userConversations, loading: userConversationsLoading } = useUserConversations(user?.uid)
+  const { isCollaborateMode } = useWorkflowStore()
 
   const [messages, setMessages] = React.useState<Message[]>([])
   const [history, setHistory] = React.useState<ChatHistoryItem[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [selectedModel, setSelectedModel] = React.useState('auto')
+
+  // Collaboration streaming handlers
+  const updateMessage = React.useCallback((messageId: string, updates: Partial<Message>) => {
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { 
+            ...msg,
+            ...Object.fromEntries(
+              Object.entries(updates).map(([key, value]) => [
+                key,
+                typeof value === 'function' ? value(msg) : value
+              ])
+            )
+          }
+        : msg
+    ))
+  }, [])
+
+  const addMessage = React.useCallback((message: Message) => {
+    setMessages(prev => [...prev, message])
+  }, [])
+
+  // Initialize collaboration streaming hook (use a temp ID for new conversations)
+  const { startCollaboration } = useCollaborationStream({
+    threadId: threadId === 'new' ? `temp_${Date.now()}` : threadId,
+    orgId,
+    onUpdateMessage: updateMessage,
+    onAddMessage: addMessage
+  })
 
   // Load thread messages on mount
   React.useEffect(() => {
@@ -123,14 +177,15 @@ export default function ConversationPage() {
     toast.success(`Switched to ${modelName}`)
   }
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim()) return
+  const handleSendMessage = async (content: string, images?: ImageFile[]) => {
+    if (!content.trim() && (!images || images.length === 0)) return
 
     // Add user message immediately
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: content.trim(),
+      images: images && images.length > 0 ? images : undefined,
       timestamp: new Date().toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -140,12 +195,39 @@ export default function ConversationPage() {
     setIsLoading(true)
 
     try {
+      // Check if we should use collaboration streaming
+      if (isCollaborateMode) {
+        console.log('🤝 Using collaboration streaming mode')
+        await startCollaboration(content.trim(), "auto")
+        
+        // Update conversation metadata for collaboration
+        if (user?.uid && threadId !== 'new') {
+          await updateConversationMetadata(user.uid, threadId, {
+            title: messages.length === 0 ? content.substring(0, 50) : undefined,
+            lastMessagePreview: `Collaboration: ${content.substring(0, 80)}...`,
+          })
+        }
+        
+        setIsLoading(false)
+        return
+      }
       const selectedModelData = SYNTRA_MODELS.find((m) => m.id === selectedModel)
 
       // Prepare request body
       // When 'auto' is selected, don't send provider/model to trigger intelligent routing
       const requestBody: any = {
         content: content.trim(),
+        collaboration_mode: isCollaborateMode,
+      }
+
+      // Add image attachments if provided
+      if (images && images.length > 0) {
+        requestBody.attachments = images.map(image => ({
+          type: 'image',
+          name: image.file?.name || 'image',
+          data: image.url.split(',')[1], // Extract base64 data part
+          mimeType: image.file?.type || 'image/png'
+        }))
       }
 
       // Only add model_preference if not using auto mode
@@ -247,6 +329,7 @@ export default function ConversationPage() {
       messages={messages}
       history={history}
       onSendMessage={handleSendMessage}
+      onUpdateMessage={updateMessage}
       onNewChat={handleNewChat}
       onHistoryClick={handleHistoryClick}
       isLoading={isLoading}

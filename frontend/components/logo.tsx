@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 interface LogoProps {
@@ -55,18 +56,6 @@ export function Logo({
     ? Math.round(size * 0.75) 
     : size === 'sm' ? 20 : size === 'md' ? 24 : 28
 
-  const iconClasses = cn(
-    'rounded-lg flex items-center justify-center flex-shrink-0',
-    variant === 'default'
-      ? 'bg-emerald-500'
-      : 'bg-zinc-800 border border-zinc-700'
-  )
-
-  const textClasses = cn(
-    'font-bold uppercase tracking-tight',
-    variant === 'default' ? 'text-white' : 'text-foreground'
-  )
-
   const labelClasses = cn(
     'font-bold text-foreground uppercase tracking-tight'
   )
@@ -74,20 +63,19 @@ export function Logo({
   const content = (
     <div className={cn('flex items-center gap-2', className)}>
       <div
-        className={iconClasses}
+        className="flex-shrink-0"
         style={{
           width: `${iconSize}px`,
           height: `${iconSize}px`,
         }}
       >
-        <span
-          className={textClasses}
-          style={{
-            fontSize: `${Math.round(iconSize * 0.5)}px`,
-          }}
-        >
-          M
-        </span>
+        <Image
+          src="/syntra.png"
+          alt="Syntra Logo"
+          width={iconSize}
+          height={iconSize}
+          className="object-contain"
+        />
       </div>
       {showText && (
         <span

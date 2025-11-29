@@ -1,17 +1,20 @@
 """
-Enhanced Collaboration Service
+Enhanced Collaboration Service with Multi-Model Council
 
-Uses the new schema for robust multi-agent collaboration with proper:
+Uses the new schema for robust multi-agent collaboration with:
 - Conversation threading
-- Run tracking
+- Run tracking  
 - Step execution
 - Message storage
 - Follow-up context
+- Multi-model external review (NEW)
+- Meta-synthesis final answer (NEW)
 """
 
 from typing import Dict, Any, List, Optional, Tuple
 import time
 import asyncio
+import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
@@ -23,14 +26,21 @@ from app.models.collaboration import (
 )
 from app.services.collaboration_engine import CollaborationEngine, AgentRole
 from app.models.provider_key import ProviderType
+from app.services.report_compression import compress_internal_report, extract_confidence_score
+from app.services.external_reviewers import ExternalReviewCouncil
+from app.services.meta_synthesis import synthesize_collaboration_result
+
+logger = logging.getLogger(__name__)
 
 
 class CollaborationService:
-    """Enhanced collaboration service using the new schema"""
+    """Enhanced collaboration service with multi-model council"""
     
-    def __init__(self, db_session: AsyncSession):
+    def __init__(self, db_session: AsyncSession, org_id: Optional[str] = None):
         self.db = db_session
+        self.org_id = org_id
         self.engine = CollaborationEngine()
+        self.review_council = ExternalReviewCouncil(org_id)
     
     async def create_conversation(
         self,
@@ -58,19 +68,23 @@ class CollaborationService:
         conversation_id: str,
         user_message: str,
         api_keys: Dict[str, str],
-        mode: CollabMode = CollabMode.AUTO
-    ) -> CollabRun:
+        mode: CollabMode = CollabMode.AUTO,
+        enable_external_review: bool = True,
+        review_mode: str = "auto"  # "auto", "high_fidelity", "expert"
+    ) -> Dict[str, Any]:
         """
-        Start a new collaboration run.
+        Start a new collaboration run with multi-model council.
         
         Args:
             conversation_id: Target conversation
             user_message: User's message to collaborate on
             api_keys: Available API keys for providers
             mode: Collaboration mode (auto/manual)
+            enable_external_review: Whether to run external multi-model review
+            review_mode: External review mode ("auto", "high_fidelity", "expert")
             
         Returns:
-            CollabRun object with tracking info
+            Dict with CollabRun object, final answer, and review metadata
         """
         # Get conversation
         conversation = await self.get_conversation(conversation_id)
@@ -103,7 +117,7 @@ class CollaborationService:
         
         # Create steps for each agent
         agent_configs = [
-            (1, CollabRole.ANALYST, ProviderType.GEMINI, "gemini-2.0-flash-exp"),
+            (1, CollabRole.ANALYST, ProviderType.GEMINI, "gemini-2.5-flash"),
             (2, CollabRole.RESEARCHER, ProviderType.PERPLEXITY, "sonar-pro"),
             (3, CollabRole.CREATOR, ProviderType.OPENAI, "gpt-4o"),
             (4, CollabRole.CRITIC, ProviderType.OPENAI, "gpt-4o"),
@@ -124,9 +138,12 @@ class CollaborationService:
         
         await self.db.commit()
         
-        # Execute the collaboration
+        # Execute the collaboration with new multi-model pipeline
         try:
-            await self._execute_collaboration_run(collab_run, api_keys)
+            result = await self._execute_enhanced_collaboration_run(
+                collab_run, api_keys, enable_external_review, review_mode
+            )
+            return result
         except Exception as e:
             # Mark run as failed
             collab_run.status = CollabStatus.ERROR
@@ -134,8 +151,6 @@ class CollaborationService:
             collab_run.completed_at = datetime.utcnow()
             await self.db.commit()
             raise
-        
-        return collab_run
     
     async def _execute_collaboration_run(
         self,
@@ -233,6 +248,110 @@ class CollaborationService:
         collab_run.total_time_ms = int(total_time)
         
         await self.db.commit()
+    
+    async def _execute_enhanced_collaboration_run(
+        self,
+        collab_run: CollabRun,
+        api_keys: Dict[str, str],
+        enable_external_review: bool,
+        review_mode: str
+    ) -> Dict[str, Any]:
+        """
+        Execute enhanced collaboration run with multi-model council.
+        
+        This method runs:
+        1. Internal team pipeline (existing 5 stages)
+        2. Report compression
+        3. External multi-model review (if enabled)
+        4. Meta-synthesis final answer
+        """
+        start_time = time.perf_counter()
+        
+        # Step 1: Execute internal team pipeline (existing logic)
+        logger.info("Starting internal team pipeline")
+        await self._execute_collaboration_run(collab_run, api_keys)
+        
+        # Get the internal report (synthesizer output)
+        internal_report = collab_run.steps[-1].output_final  # Synthesizer output
+        user_question = collab_run.user_message.content_text
+        
+        logger.info("Internal team pipeline completed")
+        
+        # Step 2: Determine if external review should be conducted
+        should_review = enable_external_review
+        
+        if enable_external_review and review_mode == "auto":
+            # Extract confidence score from critic
+            critic_output = collab_run.steps[-2].output_final  # Critic output
+            confidence_score = await extract_confidence_score(critic_output)
+            should_review = await self.review_council.should_conduct_external_review(
+                confidence_score, review_mode
+            )
+            logger.info(f"Confidence score: {confidence_score:.2f}, External review: {should_review}")
+        
+        external_critiques = []
+        compressed_report = ""
+        synthesis_result = None
+        
+        if should_review:
+            # Step 3: Compress internal report for external review
+            logger.info("Compressing internal report for external review")
+            compressed_report = await compress_internal_report(internal_report, user_question)
+            
+            # Step 4: Conduct external multi-model review
+            logger.info("Starting external multi-model review")
+            external_critiques = await self.review_council.conduct_external_review(
+                question=user_question,
+                compressed_report=compressed_report,
+                max_reviewers=6 if review_mode == "expert" else None
+            )
+            logger.info(f"External review completed: {len(external_critiques)} reviewers")
+            
+            # Step 5: Meta-synthesis final answer
+            logger.info("Starting meta-synthesis")
+            synthesis_result = await synthesize_collaboration_result(
+                question=user_question,
+                internal_report=internal_report,
+                external_critiques=external_critiques,
+                preferred_model="gpt-4o"
+            )
+            
+            # Create final synthesis message
+            final_sequence = await self._get_next_sequence(str(collab_run.conversation_id))
+            final_msg = CollabMessage(
+                conversation_id=collab_run.conversation_id,
+                role=MessageRole.ASSISTANT,
+                content_text=synthesis_result["final_answer"],
+                provider="openai",  # Meta-synthesis model
+                author_model="gpt-4o",
+                collab_run_id=collab_run.id,
+                sequence=final_sequence,
+                content_type=MessageContentType.MARKDOWN
+            )
+            
+            self.db.add(final_msg)
+            logger.info("Meta-synthesis completed")
+        else:
+            logger.info("Skipping external review - using internal report as final answer")
+        
+        # Update timing
+        total_time = (time.perf_counter() - start_time) * 1000
+        collab_run.total_time_ms = int(total_time)
+        
+        await self.db.commit()
+        
+        # Return comprehensive result
+        return {
+            "collab_run": collab_run,
+            "internal_report": internal_report,
+            "compressed_report": compressed_report if should_review else None,
+            "external_critiques": external_critiques if should_review else [],
+            "final_answer": synthesis_result["final_answer"] if synthesis_result else internal_report,
+            "synthesis_metadata": synthesis_result.get("synthesis_metadata") if synthesis_result else None,
+            "external_review_conducted": should_review,
+            "reviewers_consulted": len(external_critiques),
+            "total_time_ms": int(total_time)
+        }
     
     async def _execute_agent_step(
         self,

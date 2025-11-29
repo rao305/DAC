@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Settings, HelpCircle, Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { DACModelSelector } from './dac-model-selector'
+import { ModelSelector } from './model-selector'
 
 interface OkaraHeaderProps {
     selectedModel?: string
@@ -45,9 +45,9 @@ export function OkaraHeader({
 
             {/* Center: Model Selector */}
             <div className="flex items-center gap-2 px-3 py-1 bg-[#2a2a2a] border border-[#3a3a3a] rounded-[8px] shadow-[rgba(0,0,0,.2)]">
-                <DACModelSelector
-                    selectedModel={selectedModel}
-                    onSelectModel={onModelSelect}
+                <ModelSelector
+                    value={selectedModel}
+                    onValueChange={onModelSelect}
                 />
             </div>
 

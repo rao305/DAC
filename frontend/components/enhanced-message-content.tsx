@@ -184,11 +184,15 @@ const InlineCode: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // Math component that handles both inline and block math
 const MathComponent: React.FC<{ children: string; display?: boolean }> = ({ children, display }) => {
   try {
-    return display ? (
-      <BlockMath math={children} />
-    ) : (
-      <InlineMath math={children} />
-    )
+    if (display) {
+      return (
+        <div className="my-4 overflow-x-auto">
+          <BlockMath math={children} />
+        </div>
+      )
+    } else {
+      return <InlineMath math={children} />
+    }
   } catch (error) {
     console.error('KaTeX rendering error:', error)
     return (
@@ -201,32 +205,150 @@ const MathComponent: React.FC<{ children: string; display?: boolean }> = ({ chil
 
 // Process text to handle LaTeX math expressions
 const processLatexInText = (text: string): React.ReactNode[] => {
-  // Pattern to match both inline $...$ and block $$...$$
-  const mathRegex = /(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g
-  const parts = text.split(mathRegex)
+  if (!text) return []
   
+  // Pattern to match multiple LaTeX delimiters:
+  // 1. Block math: $$...$$ and \[...\]
+  // 2. Inline math: $...$ and \(...\)
+  // 3. Bracket notation: [mathematical expressions with LaTeX commands]
+  const blockMathRegex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g
+  const inlineMathRegex = /(\$(?![$])[^$\n]*?\$(?![$])|\\\([\s\S]*?\\\))/g
+  // Bracket math: [expression with LaTeX commands or mathematical notation] - detect mathematical expressions in brackets
+  const bracketMathRegex = /\[\s*\\?[^[\]]*?(?:\\[a-zA-Z]+|[(){}=+\-*/^_'x]|u\(|v\(|dx|dy|dt|[a-zA-Z]'?\([a-zA-Z]\))[^[\]]*?\s*\]/g
+  
+  const parts: Array<{ type: 'text' | 'block-math' | 'inline-math' | 'bracket-math'; content: string; start: number; end: number }> = []
+  
+  // First, find all block math matches
+  let match
+  const blockMatches: Array<{ start: number; end: number; content: string }> = []
+  blockMathRegex.lastIndex = 0
+  while ((match = blockMathRegex.exec(text)) !== null) {
+    blockMatches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      content: match[0]
+    })
+  }
+  
+  // Find bracket math matches that don't overlap with block math
+  const bracketMatches: Array<{ start: number; end: number; content: string }> = []
+  bracketMathRegex.lastIndex = 0
+  while ((match = bracketMathRegex.exec(text)) !== null) {
+    const isInsideBlock = blockMatches.some(
+      (bm) => match.index >= bm.start && match.index < bm.end
+    )
+    if (!isInsideBlock) {
+      bracketMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[0]
+      })
+    }
+  }
+  
+  // Then find inline math matches that don't overlap with block math or bracket math
+  const inlineMatches: Array<{ start: number; end: number; content: string }> = []
+  inlineMathRegex.lastIndex = 0
+  while ((match = inlineMathRegex.exec(text)) !== null) {
+    const isInsideBlock = blockMatches.some(
+      (bm) => match.index >= bm.start && match.index < bm.end
+    )
+    const isInsideBracket = bracketMatches.some(
+      (bm) => match.index >= bm.start && match.index < bm.end
+    )
+    if (!isInsideBlock && !isInsideBracket) {
+      inlineMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[0]
+      })
+    }
+  }
+  
+  // Combine and sort all matches
+  const allMatches = [
+    ...blockMatches.map(m => ({ ...m, type: 'block-math' as const })), 
+    ...bracketMatches.map(m => ({ ...m, type: 'bracket-math' as const })),
+    ...inlineMatches.map(m => ({ ...m, type: 'inline-math' as const }))
+  ].sort((a, b) => a.start - b.start)
+  
+  // Build parts array
+  let lastIndex = 0
+  for (const mathMatch of allMatches) {
+    // Add text before this match
+    if (mathMatch.start > lastIndex) {
+      const textContent = text.substring(lastIndex, mathMatch.start)
+      if (textContent.trim()) {
+        parts.push({ type: 'text', content: textContent, start: lastIndex, end: mathMatch.start })
+      }
+    }
+    
+    // Add the math match
+    parts.push({ 
+      type: mathMatch.type, 
+      content: mathMatch.content, 
+      start: mathMatch.start, 
+      end: mathMatch.end 
+    })
+    
+    lastIndex = mathMatch.end
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    const textContent = text.substring(lastIndex)
+    if (textContent.trim()) {
+      parts.push({ type: 'text', content: textContent, start: lastIndex, end: text.length })
+    }
+  }
+  
+  // If no matches found, return the whole text as a single part
+  if (parts.length === 0) {
+    parts.push({ type: 'text', content: text, start: 0, end: text.length })
+  }
+  
+  // Convert to React nodes
   return parts.map((part, index) => {
-    if (part.match(/^\$\$[\s\S]*?\$\$$/)) {
-      // Block math
-      const mathContent = part.slice(2, -2).trim()
+    if (part.type === 'block-math') {
+      // Handle both $$...$$ and \[...\]
+      let mathContent = part.content.trim()
+      if (mathContent.startsWith('$$') && mathContent.endsWith('$$')) {
+        mathContent = mathContent.slice(2, -2).trim()
+      } else if (mathContent.startsWith('\\[') && mathContent.endsWith('\\]')) {
+        mathContent = mathContent.slice(2, -2).trim()
+      }
       return <MathComponent key={index} display={true}>{mathContent}</MathComponent>
-    } else if (part.match(/^\$[^$\n]*?\$$/)) {
-      // Inline math
-      const mathContent = part.slice(1, -1).trim()
+    } else if (part.type === 'inline-math') {
+      // Handle both $...$ and \(...\)
+      let mathContent = part.content.trim()
+      if (mathContent.startsWith('$') && mathContent.endsWith('$') && mathContent.length > 2) {
+        mathContent = mathContent.slice(1, -1).trim()
+      } else if (mathContent.startsWith('\\(') && mathContent.endsWith('\\)')) {
+        mathContent = mathContent.slice(2, -2).trim()
+      }
       return <MathComponent key={index} display={false}>{mathContent}</MathComponent>
+    } else if (part.type === 'bracket-math') {
+      // Handle [LaTeX expression] - treat as display math
+      const mathContent = part.content.slice(1, -1).trim()
+      return <MathComponent key={index} display={true}>{mathContent}</MathComponent>
     } else {
-      // Regular text
-      return part
+      return <span key={index}>{part.content}</span>
     }
   })
 }
 
-// Custom paragraph component that handles LaTeX
-const Paragraph: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// Custom paragraph component that always uses div to avoid HTML nesting issues
+// This prevents hydration errors from block-level elements (code blocks, math, etc.) inside <p> tags
+const Paragraph: React.FC<{ children: React.ReactNode; node?: any }> = ({ children, node }) => {
+  // For string content, process LaTeX
   if (typeof children === 'string') {
-    return <p className="mb-4">{processLatexInText(children)}</p>
+    const processed = processLatexInText(children)
+    return <div className="mb-4">{processed}</div>
   }
-  return <p className="mb-4">{children}</p>
+  
+  // For all other content, use div to avoid nesting issues
+  // (div can contain any block or inline elements, unlike p which is restricted)
+  return <div className="mb-4">{children}</div>
 }
 
 export const EnhancedMessageContent: React.FC<EnhancedMessageContentProps> = ({

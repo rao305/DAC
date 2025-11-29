@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     siteName: "Syntra",
     images: [
       {
-        url: "/icon.svg",
+        url: "/syntra.png",
         width: 180,
         height: 180,
         alt: "Syntra Logo",
@@ -54,7 +54,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/syntra.png" type="image/png" />
         <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Google+Sans:wght@400;500&display=swap" rel="stylesheet" />
         <script
           type="application/ld+json"

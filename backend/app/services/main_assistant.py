@@ -1,17 +1,24 @@
 """
-Main DAC Assistant
+Main DAC Assistant - Next-Gen Version
 
 Handles user messages across turns with access to:
-- Regular chat history (user and assistant messages)
-- Internal collaboration logs from previous turns (agent outputs)
+- Next-generation intelligent collaboration orchestration
+- Memory lattice with cross-model shared intelligence
+- Truth arbitration and conflict resolution
+- Dynamic task orchestration and workflow building
 
-Supports meta-questions about the collaboration process and follow-up questions
-about any part of previous multi-agent collaborations.
+Supports both legacy sequential mode and advanced AI orchestration modes.
 """
 
 from typing import Dict, Any, List, Optional
 import time
 
+from app.services.nextgen_collaboration_engine import (
+    nextgen_collaboration_engine, 
+    CollaborationMode,
+    NextGenCollaborationResult
+)
+# Keep legacy engine for compatibility
 from app.services.collaboration_engine import (
     CollaborationEngine, 
     ConversationMemory, 
@@ -27,6 +34,9 @@ class MainAssistant:
     """Main DAC voice with access to collaboration context"""
     
     def __init__(self):
+        # Next-gen collaboration engine (primary)
+        self.nextgen_engine = nextgen_collaboration_engine
+        # Legacy engine (fallback compatibility)
         self.collaboration_engine = CollaborationEngine()
         self.conversation_memory = conversation_memory
         self.system_prompt = self._get_main_system_prompt()
@@ -93,10 +103,19 @@ You always have the previous multi-agent thinking available, and you can referen
         turn_id: str,
         api_keys: Dict[str, str],
         collaboration_mode: bool = False,
-        chat_history: List[Dict[str, str]] = None
+        chat_history: List[Dict[str, str]] = None,
+        nextgen_mode: str = "auto"  # "auto", "intelligent_swarm", "task_workflow", "parallel", "legacy"
     ) -> Dict[str, Any]:
         """
-        Handle a user message with full context awareness.
+        Handle a user message with next-gen collaboration intelligence.
+        
+        Args:
+            nextgen_mode: Controls collaboration strategy
+                - "auto": Intelligent mode selection based on query complexity
+                - "intelligent_swarm": Full adaptive model swarming with truth arbitration
+                - "task_workflow": DAG-based task orchestration  
+                - "parallel": Simple parallel model execution
+                - "legacy": Original sequential 5-agent pipeline
         
         Args:
             user_message: The user's message
@@ -130,34 +149,81 @@ You always have the previous multi-agent thinking available, and you can referen
         
         # New query - run collaboration if enabled
         if collaboration_mode:
-            result = await self.collaboration_engine.collaborate(
-                user_query=user_message,
-                turn_id=turn_id,
-                api_keys=api_keys,
-                collaboration_mode=True
-            )
+            # Determine collaboration mode
+            if nextgen_mode == "legacy":
+                # Use legacy sequential engine
+                result = await self.collaboration_engine.collaborate(
+                    user_query=user_message,
+                    turn_id=turn_id,
+                    api_keys=api_keys,
+                    collaboration_mode=True
+                )
+                
+                # Store agent outputs for future reference
+                self.conversation_memory.store_collaboration(
+                    turn_id, 
+                    result.agent_outputs
+                )
+                
+                return {
+                    "content": result.final_report,
+                    "type": "collaboration",
+                    "agent_outputs": [
+                        {
+                            "role": output.role.value,
+                            "provider": output.provider,
+                            "content": output.content,
+                            "timestamp": output.timestamp,
+                            "turn_id": output.turn_id
+                        }
+                        for output in result.agent_outputs
+                    ],
+                    "total_time_ms": result.total_time_ms,
+                    "mode": "legacy_sequential"
+                }
             
-            # Store agent outputs for future reference
-            self.conversation_memory.store_collaboration(
-                turn_id, 
-                result.agent_outputs
-            )
-            
-            return {
-                "content": result.final_report,
-                "type": "collaboration",
-                "turn_id": turn_id,
-                "agent_outputs": [
-                    {
-                        "role": output.role.value,
-                        "provider": output.provider,
-                        "content": output.content,
-                        "timestamp": output.timestamp
+            else:
+                # Use next-gen collaboration engine
+                collab_mode_map = {
+                    "auto": CollaborationMode.INTELLIGENT_SWARM,
+                    "intelligent_swarm": CollaborationMode.INTELLIGENT_SWARM,
+                    "task_workflow": CollaborationMode.TASK_WORKFLOW,
+                    "parallel": CollaborationMode.PARALLEL_MODELS
+                }
+                
+                selected_mode = collab_mode_map.get(nextgen_mode, CollaborationMode.INTELLIGENT_SWARM)
+                
+                # Build context from chat history
+                context = self._build_context_from_history(chat_history or [])
+                
+                result = await self.nextgen_engine.collaborate(
+                    user_query=user_message,
+                    turn_id=turn_id, 
+                    api_keys=api_keys,
+                    collaboration_mode=selected_mode,
+                    context=context
+                )
+                
+                return {
+                    "content": result.final_output,
+                    "type": "nextgen_collaboration",
+                    "collaboration_mode": result.collaboration_mode.value,
+                    "intent_analysis": {
+                        "needs": dict(result.intent_analysis.needs) if result.intent_analysis else {},
+                        "complexity": result.intent_analysis.complexity if result.intent_analysis else 0.0,
+                        "urgency": result.intent_analysis.urgency if result.intent_analysis else 0.0
+                    },
+                    "model_executions": result.model_executions or [],
+                    "active_contradictions": result.active_contradictions or [],
+                    "convergence_score": result.convergence_score,
+                    "insights_generated": result.insights_generated,
+                    "conflicts_resolved": result.conflicts_resolved,
+                    "total_time_ms": result.total_time_ms,
+                    "performance_metrics": {
+                        "parallelization_efficiency": result.parallelization_efficiency,
+                        "model_utilization": result.model_utilization or {}
                     }
-                    for output in result.agent_outputs
-                ],
-                "total_time_ms": result.total_time_ms
-            }
+                }
         
         else:
             # Direct mode - single model response with context awareness
@@ -167,6 +233,27 @@ You always have the previous multi-agent thinking available, and you can referen
                 api_keys,
                 chat_history or []
             )
+    
+    def _build_context_from_history(self, chat_history: List[Dict[str, str]]) -> str:
+        """Build context string from chat history for next-gen collaboration"""
+        if not chat_history:
+            return ""
+        
+        context_parts = ["**Recent Chat History:**"]
+        
+        # Take last 5 exchanges to avoid token overflow
+        recent_history = chat_history[-10:] if len(chat_history) > 10 else chat_history
+        
+        for message in recent_history:
+            role = message.get("role", "unknown")
+            content = message.get("content", "")
+            
+            if role == "user":
+                context_parts.append(f"User: {content[:200]}...")
+            elif role == "assistant":
+                context_parts.append(f"Assistant: {content[:200]}...")
+        
+        return "\n".join(context_parts)
     
     def _is_meta_question(self, message: str) -> bool:
         """Check if message is asking about the collaboration process"""

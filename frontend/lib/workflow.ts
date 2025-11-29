@@ -19,7 +19,7 @@ export type WorkflowStep = {
     error?: {
         message: string;
         provider?: string;
-        type?: "config" | "network" | "rate_limit" | "unknown";
+        type?: "config" | "network" | "rate_limit" | "timeout" | "unknown";
     };
 };
 

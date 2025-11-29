@@ -13,7 +13,7 @@ API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{mod
 API_STREAM_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent"
 
 
-def _to_gemini_contents(messages: List[Dict[str, str]]) -> List[Dict[str, object]]:
+def _to_gemini_contents(messages: List[Dict]) -> List[Dict[str, object]]:
     """Convert OpenAI-style messages to Gemini content blocks.
 
     Gemini only supports 'user' and 'model' roles.
@@ -88,7 +88,7 @@ def _to_gemini_contents(messages: List[Dict[str, str]]) -> List[Dict[str, object
 
 
 async def call_gemini(
-    messages: List[Dict[str, str]],
+    messages: List[Dict],
     model: str,
     api_key: str,
     *,
@@ -137,7 +137,7 @@ async def call_gemini(
 
 
 async def call_gemini_streaming(
-    messages: List[Dict[str, str]],
+    messages: List[Dict],
     model: str,
     api_key: str,
     *,

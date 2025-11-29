@@ -1,19 +1,26 @@
 'use client'
 
-import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { EnhancedConversationLayout } from '@/components/enhanced-conversation-layout'
+import { useRouter } from 'next/navigation'
+import * as React from 'react'
 // Removed unused auth and conversation hooks
-import { toast } from 'sonner'
-import { apiFetch } from '@/lib/api'
+import { runStep, startWorkflow } from '@/app/actions/workflow'
 import { SYNTRA_MODELS } from '@/components/syntra-model-selector'
+import { apiFetch } from '@/lib/api'
 import { useWorkflowStore } from '@/store/workflow-store'
-import { startWorkflow, runStep } from '@/app/actions/workflow'
+import { toast } from 'sonner'
+
+interface ImageFile {
+  file?: File
+  url: string
+  id: string
+}
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  images?: ImageFile[]
   chainOfThought?: string
   timestamp?: string
   modelId?: string
@@ -44,71 +51,433 @@ export default function ConversationsLanding() {
   const [isLoading, setIsLoading] = React.useState(false)
   const [currentThreadId, setCurrentThreadId] = React.useState<string | null>(null)
 
-  const { isCollaborateMode, steps, setSteps, updateStep } = useWorkflowStore()
+  const { isCollaborateMode, steps, setSteps, updateStep, toggleCollaborateMode } = useWorkflowStore()
 
   // Execute workflow logic
   const executeWorkflow = React.useCallback(async (currentSteps: typeof steps, userContent: string) => {
+    // Get fresh steps from store to ensure we have the latest state
     let localSteps = [...currentSteps]
     setIsLoading(true)
 
+    console.log(`🚀 Starting workflow execution with ${localSteps.length} steps`)
+    console.log(`📋 Initial step states:`, localSteps.map(s => ({
+      id: s.id,
+      role: s.role,
+      status: s.status,
+      mode: s.mode
+    })))
+
+    // Process steps sequentially - only one at a time
     for (let i = 0; i < localSteps.length; i++) {
+      // Refresh steps from store to get latest state (in case of concurrent updates)
+      const { steps: storeSteps } = useWorkflowStore.getState()
+      const storeStep = storeSteps.find(s => s.id === localSteps[i].id)
+      if (storeStep) {
+        localSteps[i] = { ...storeStep }
+      }
+
       const step = localSteps[i]
-      if (step.status === "pending") {
-        // Update UI to show running
-        updateStep(step.id, { status: "running" })
 
-        try {
-          // Run the step on server
-          const result = await runStep(step.id, userContent, localSteps)
-          const { outputDraft, status, metadata, error } = result
+      console.log(`🔍 Processing step ${i + 1}/${localSteps.length}: ${step.id} (${step.role}) - current status: ${step.status}`)
 
-          // Update UI with result
+      // Skip steps that are already completed (done, error, cancelled)
+      // Process steps that are pending, running, or awaiting_user (if continuing after approval)
+      if (step.status === "done" || step.status === "error" || step.status === "cancelled") {
+        console.log(`⏭️ Skipping step ${step.id} - status: ${step.status} (already completed)`)
+        continue
+      }
+
+      // Double-check: if step has an error, log it and skip
+      if (step.error) {
+        console.warn(`⚠️ Step ${step.id} has an error from previous run:`, step.error)
+        console.log(`⏭️ Skipping step ${step.id} due to previous error`)
+        continue
+      }
+
+      // If step is awaiting_user, it means it's waiting for approval - skip it for now
+      // (It should have been set to "done" before continue is called)
+      if (step.status === "awaiting_user") {
+        console.log(`⏸️ Step ${step.id} is awaiting approval - skipping`)
+        setIsLoading(false)
+        return
+      }
+
+      // Ensure we're processing steps in order - don't skip ahead
+      // Check if any previous step is still pending or awaiting_user
+      const previousIncomplete = localSteps.slice(0, i).some(s =>
+        s.status === "pending" || s.status === "awaiting_user" || s.status === "running"
+      )
+      if (previousIncomplete) {
+        const incompleteSteps = localSteps.slice(0, i).filter(s =>
+          s.status === "pending" || s.status === "awaiting_user" || s.status === "running"
+        )
+        console.log(`⏸️ Waiting for previous steps to complete before processing ${step.id}`)
+        console.log(`📋 Incomplete previous steps:`, incompleteSteps.map(s => ({
+          id: s.id,
+          role: s.role,
+          status: s.status
+        })))
+        setIsLoading(false)
+        return
+      }
+
+      // Log step order to ensure we're processing in correct sequence
+      console.log(`📝 Step processing order check:`, {
+        currentIndex: i,
+        currentStep: { id: step.id, role: step.role, status: step.status },
+        previousSteps: localSteps.slice(0, i).map(s => ({ id: s.id, role: s.role, status: s.status }))
+      })
+
+      // Update UI to show running
+      console.log(`🔄 Starting step ${step.id} (${step.role}) - mode: ${step.mode}`)
+      updateStep(step.id, { status: "running" })
+
+      try {
+        // Run the step on server - this will wait for completion
+        // Add a client-side timeout as a safety net (server has 120s, we'll give it 130s)
+        console.log(`⏳ Calling runStep for ${step.id} (${step.role}) with ${step.model}...`)
+        const stepTimeout = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`Step ${step.id} execution exceeded 130 seconds`)), 130000)
+        })
+
+        const result = await Promise.race([
+          runStep(step.id, userContent, localSteps),
+          stepTimeout
+        ]) as Awaited<ReturnType<typeof runStep>>
+
+        console.log(`✅ runStep completed for ${step.id}, status: ${result?.status}`)
+        console.log(`📦 Raw result from server:`, JSON.stringify(result, null, 2))
+
+        if (!result) {
+          console.error(`❌ No result returned from step ${step.id}`)
           updateStep(step.id, {
-            outputDraft,
-            outputFinal: status === "done" ? outputDraft : undefined,
-            status: status as any,
-            metadata,
-            error
+            status: "error",
+            error: { message: "No response from server", provider: step.model, type: "network" }
           })
-
-          // Update local steps array for next iteration context
-          localSteps = localSteps.map(s => s.id === step.id ? {
-            ...s,
-            outputDraft,
-            outputFinal: outputDraft,
-            status: status as any,
-            metadata,
-            error
-          } : s)
-
-          // If error, stop workflow
-          if (status === "error") {
-            console.error(`Workflow stopped due to error in step ${step.id}`)
-            setIsLoading(false)
-            return
-          }
-
-          // If manual mode, stop here and wait for user
-          if (status === "awaiting_user") {
-            setIsLoading(false)
-            return
-          }
-        } catch (error) {
-          console.error(`Step ${step.id} failed:`, error)
-          updateStep(step.id, { status: "error", error: { message: "Unexpected client error", type: "unknown" } })
           setIsLoading(false)
           return
         }
+
+        // Log all properties of the result for debugging
+        console.log(`📊 Result properties:`, {
+          keys: Object.keys(result),
+          status: result.status,
+          hasOutputDraft: 'outputDraft' in result,
+          hasErrorMessage: 'errorMessage' in result,
+          errorMessage: (result as any).errorMessage,
+          errorProvider: (result as any).errorProvider,
+          errorType: (result as any).errorType
+        })
+
+        console.log(`✅ Step ${step.id} (${step.role}) completed with status: ${result.status}`)
+
+        // Extract error from result - handle both nested and flat error structures
+        const resultAny = result as any
+        let error: { message: string; provider?: string; type?: "config" | "network" | "rate_limit" | "timeout" | "unknown" } | undefined = undefined
+
+        if (result.status === "error") {
+          // Map error type string to valid type
+          const mapErrorType = (type: string | undefined): "config" | "network" | "rate_limit" | "timeout" | "unknown" => {
+            const validTypes = ["config", "network", "rate_limit", "timeout", "unknown"]
+            return validTypes.includes(type || "") ? type as any : "unknown"
+          }
+
+          // Check for flat error properties (new format)
+          if (resultAny.errorMessage) {
+            error = {
+              message: resultAny.errorMessage,
+              provider: resultAny.errorProvider || step.model,
+              type: mapErrorType(resultAny.errorType)
+            }
+          }
+          // Check for nested error object (old format)
+          else if (resultAny.error && typeof resultAny.error === 'object') {
+            error = {
+              message: resultAny.error.message || "Unknown error",
+              provider: resultAny.error.provider || step.model,
+              type: mapErrorType(resultAny.error.type)
+            }
+          }
+          // Fallback error
+          else {
+            error = {
+              message: `${step.role} step failed with ${step.model}. Check API keys and model availability.`,
+              provider: step.model,
+              type: "unknown"
+            }
+          }
+        }
+
+        console.log(`📊 Step result details:`, {
+          hasOutput: !!result.outputDraft,
+          outputLength: result.outputDraft?.length || 0,
+          status: result.status,
+          hasError: !!error,
+          errorDetails: error,
+          fullResult: JSON.stringify(result, null, 2)
+        })
+
+        const { outputDraft, status, metadata } = result
+
+        // Update UI with result
+        updateStep(step.id, {
+          outputDraft,
+          outputFinal: status === "done" ? outputDraft : undefined,
+          status: status as any,
+          metadata,
+          error
+        })
+
+        // Update local steps array for next iteration context
+        localSteps = localSteps.map(s => s.id === step.id ? {
+          ...s,
+          outputDraft,
+          outputFinal: status === "done" ? outputDraft : undefined,
+          status: status as any,
+          metadata,
+          error
+        } : s)
+
+        // IMPORTANT: Refresh ALL steps from store to ensure we have latest state
+        // This prevents issues where the next iteration might see stale data
+        const { steps: allStoreSteps } = useWorkflowStore.getState()
+        localSteps = localSteps.map(localStep => {
+          const storeStep = allStoreSteps.find(s => s.id === localStep.id)
+          return storeStep || localStep
+        })
+
+        // Log current step states for debugging
+        console.log(`📋 Current step states after update:`, localSteps.map(s => ({
+          id: s.id,
+          role: s.role,
+          status: s.status,
+          mode: s.mode
+        })))
+
+        // Add step output as a message in the chat for visibility
+        if (outputDraft && status !== "error") {
+          const modelName = step.model === "gpt" ? "GPT" :
+            step.model === "gemini" ? "Gemini" :
+              step.model === "perplexity" ? "Perplexity" :
+                step.model === "kimi" ? "Kimi" : step.model
+
+          const stepMessage: Message = {
+            id: `step-${step.id}-${Date.now()}`,
+            role: 'assistant',
+            content: `## ${step.role.charAt(0).toUpperCase() + step.role.slice(1)} (${modelName})\n\n${outputDraft}`,
+            timestamp: new Date().toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            modelId: step.model,
+            modelName: modelName,
+            reasoningType: step.role === "analyst" ? "analysis" :
+              step.role === "researcher" ? "research" :
+                step.role === "creator" ? "creative" :
+                  step.role === "critic" ? "analysis" : "conversation"
+          }
+          setMessages((prev) => [...prev, stepMessage])
+        }
+
+        // If error, stop workflow
+        if (status === "error") {
+          // Error is already extracted above with proper message
+          let errorMsg = error?.message || `${step.role} step failed with ${step.model}. Check API keys and model availability.`
+          const errorType = error?.type || "unknown"
+
+          // Try to parse nested JSON error messages (from API responses)
+          try {
+            if (errorMsg.startsWith('{') && errorMsg.includes('error')) {
+              const parsed = JSON.parse(errorMsg)
+              if (parsed.error?.message) {
+                errorMsg = `${parsed.error.message} (${parsed.error.type || 'API error'})`
+              }
+            }
+          } catch {
+            // Keep original message if parsing fails
+          }
+
+          console.error(`❌ Workflow stopped due to error in step ${step.id} (${step.role}):`)
+          console.error(`   Error message: ${errorMsg}`)
+          console.error(`   Error type: ${errorType}`)
+          console.error(`   Error provider: ${error?.provider || step.model}`)
+
+          // Update step with proper error (already done above, but ensure it's set)
+          updateStep(step.id, {
+            status: "error",
+            error: {
+              message: errorMsg,
+              provider: error?.provider || step.model,
+              type: errorType as any
+            }
+          })
+
+          // Create a user-friendly error message
+          const modelName = step.model === "gpt" ? "GPT (OpenAI)" :
+            step.model === "gemini" ? "Gemini (Google)" :
+              step.model === "perplexity" ? "Perplexity" :
+                step.model === "kimi" ? "Kimi (Moonshot)" : step.model
+
+          const errorMessage: Message = {
+            id: `error-${step.id}-${Date.now()}`,
+            role: 'assistant',
+            content: `**Error in ${step.role} step using ${modelName}**\n\n${errorMsg}\n\n**How to fix:**\n- Check that the API key for ${modelName} is set correctly in your backend \`.env\` file\n- Verify the API key is valid and not expired\n- Check your API usage limits`,
+            timestamp: new Date().toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          }
+          setMessages((prev) => [...prev, errorMessage])
+          setIsLoading(false)
+          return
+        }
+
+        // If manual mode, stop here and wait for user approval
+        if (status === "awaiting_user") {
+          console.log(`⏸️ Workflow paused at step ${step.id} (${step.role}) - waiting for user approval`)
+          setIsLoading(false)
+          return
+        }
+
+        // If step completed successfully, continue to next step
+        console.log(`✅ Step ${step.id} (${step.role}) completed successfully with status: ${status}`)
+
+        // Log next step that will be processed
+        const nextStepIndex = i + 1
+        if (nextStepIndex < localSteps.length) {
+          const nextStep = localSteps[nextStepIndex]
+          console.log(`➡️ Next step to process: ${nextStep.id} (${nextStep.role}) - current status: ${nextStep.status}, mode: ${nextStep.mode}`)
+
+          // If next step is pending and in auto mode, it should run automatically
+          if (nextStep.status === "pending" && nextStep.mode === "auto") {
+            console.log(`🚀 Next step ${nextStep.id} is pending and in auto mode - will execute automatically`)
+          } else if (nextStep.status === "pending" && nextStep.mode === "manual") {
+            console.log(`⏸️ Next step ${nextStep.id} is pending and in manual mode - will wait for approval`)
+          }
+        } else {
+          console.log(`🏁 No more steps to process (reached end of workflow)`)
+        }
+
+        // Small delay to allow UI to update between steps
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+        // Continue to next iteration of the loop
+        console.log(`🔄 Continuing workflow loop to next step...`)
+      } catch (error: any) {
+        console.error(`❌ Step ${step.id} (${step.role}) failed with error:`, error)
+        console.error('Error details:', {
+          message: error?.message,
+          stack: error?.stack,
+          name: error?.name,
+          errorType: typeof error,
+          errorString: String(error)
+        })
+
+        // Check if it's a timeout error
+        const isTimeout = error?.message?.includes("exceeded") || error?.message?.includes("timeout") || error?.message?.includes("timed out")
+        const errorType = isTimeout ? "timeout" : "unknown"
+
+        updateStep(step.id, {
+          status: "error",
+          error: {
+            message: error?.message || `Step ${step.role} failed with ${step.model}`,
+            provider: step.model,
+            type: errorType
+          }
+        })
+
+        // Add error message to chat
+        const errorMessage: Message = {
+          id: `error-${step.id}-${Date.now()}`,
+          role: 'assistant',
+          content: `**Error in ${step.role} step (${step.model}):** ${error?.message || "Step execution failed"}\n\nPlease check your API keys and model availability.`,
+          timestamp: new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        }
+        setMessages((prev) => [...prev, errorMessage])
+
+        setIsLoading(false)
+        return
       }
     }
-    setIsLoading(false)
-  }, [updateStep])
 
-  const handleContinueWorkflow = () => {
+    // Check if all steps are completed, especially the synthesizer
+    const allStepsCompleted = localSteps.every(s => s.status === "done" || s.status === "error")
+    const synthesizerStep = localSteps.find(s => s.role === "synthesizer")
+
+    // If synthesizer completed, create clean final message and exit collaboration mode
+    if (allStepsCompleted && synthesizerStep && synthesizerStep.status === "done" && synthesizerStep.outputFinal) {
+      // Get clean output from synthesizer (this is the final answer)
+      let finalContent = synthesizerStep.outputFinal
+
+      // Clean up markdown artifacts while preserving valid markdown for rendering
+      finalContent = finalContent
+        // Remove standalone separator lines (--- on their own line)
+        .replace(/^\s*-{3,}\s*$/gm, '')
+        // Remove quadruple asterisks (invalid markdown)
+        .replace(/\*\*\*\*/g, '')
+        // Remove triple asterisks (invalid markdown, but keep ** for bold)
+        .replace(/\*\*\*(?!\*)/g, '')
+        // Remove headers deeper than h3 (keep h1, h2, h3)
+        .replace(/^#{4,}\s+/gm, '### ')
+        // Clean up excessive whitespace
+        .replace(/\n{3,}/g, '\n\n')
+        // Remove leading/trailing separators
+        .replace(/^[\s\-*]+\n/gm, '')
+        .replace(/\n[\s\-*]+$/gm, '')
+        .trim()
+
+      // Create clean final message - content will be rendered as markdown by EnhancedMessageContent
+      // LaTeX and code blocks will be properly rendered
+      const finalMessage: Message = {
+        id: `final-${Date.now()}`,
+        role: 'assistant',
+        content: finalContent, // Clean markdown content, will be rendered properly
+        timestamp: new Date().toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        modelId: 'collaboration',
+        modelName: 'Multi-Agent Collaboration',
+        reasoningType: 'analysis'
+      }
+
+      setMessages((prev) => [...prev, finalMessage])
+
+      // Exit collaboration mode and close modal
+      console.log('✅ Workflow complete - exiting collaboration mode')
+      setTimeout(() => {
+        toggleCollaborateMode() // This will close the collaboration UI
+        setIsLoading(false) // Ensure loading state is cleared
+      }, 300) // Small delay to show completion
+    }
+
+    console.log(`🏁 All workflow steps completed`)
+    setIsLoading(false)
+  }, [updateStep, setMessages, toggleCollaborateMode])
+
+  const handleContinueWorkflow = React.useCallback(() => {
     // Find the last user message to use as context
     const lastUserMessage = messages.slice().reverse().find(m => m.role === 'user')?.content || ""
-    executeWorkflow(steps, lastUserMessage)
-  }
+    // Get the latest steps from the store to ensure we have the updated statuses
+    const { steps: latestSteps } = useWorkflowStore.getState()
+    console.log('🔄 Continuing workflow with steps:', latestSteps.map(s => ({ id: s.id, role: s.role, status: s.status })))
+
+    // Check if there are any steps that need processing
+    const hasPendingSteps = latestSteps.some(s =>
+      s.status === "pending" || s.status === "running" || s.status === "awaiting_user"
+    )
+
+    if (!hasPendingSteps) {
+      console.log('✅ All steps completed, workflow finished')
+      setIsLoading(false)
+      return
+    }
+
+    executeWorkflow(latestSteps, lastUserMessage)
+  }, [messages, executeWorkflow])
 
   // Build chat history
   React.useEffect(() => {
@@ -144,11 +513,11 @@ export default function ConversationsLanding() {
     toast.success(`Switched to ${modelName}`)
   }
 
-  const handleSendMessage = async (content: string) => {
-    console.log('🚀 handleSendMessage called with content:', content)
+  const handleSendMessage = async (content: string, images?: ImageFile[]) => {
+    console.log('🚀 handleSendMessage called with content:', content, 'images:', images)
 
-    if (!content.trim()) {
-      console.log('❌ Content is empty, returning early')
+    if (!content.trim() && (!images || images.length === 0)) {
+      console.log('❌ Content and images are empty, returning early')
       return
     }
 
@@ -160,6 +529,7 @@ export default function ConversationsLanding() {
         id: `user-${Date.now()}`,
         role: 'user',
         content: content.trim(),
+        images: images,
         timestamp: new Date().toLocaleTimeString('en-US', {
           hour: '2-digit',
           minute: '2-digit',
@@ -168,14 +538,46 @@ export default function ConversationsLanding() {
       setMessages((prev) => [...prev, userMessage])
 
       try {
+        console.log('🔧 Initializing workflow steps...')
         const initialSteps = await startWorkflow(content.trim())
-        setSteps(initialSteps)
+        console.log('✅ Workflow steps initialized:', initialSteps.length, 'steps')
+
+        // Get the current mode from the store (set by the Auto/Manual toggle)
+        const { mode: currentMode } = useWorkflowStore.getState()
+        console.log(`🔄 Using workflow mode from store: ${currentMode}`)
+
+        // Set all steps to the current mode from the store
+        const stepsWithMode = initialSteps.map(step => ({
+          ...step,
+          mode: currentMode
+        }))
+        console.log(`✅ Set all steps to ${currentMode} mode`)
+        setSteps(stepsWithMode)
 
         // Start execution
-        executeWorkflow(initialSteps, content.trim())
+        console.log('🚀 Starting workflow execution')
+        await executeWorkflow(stepsWithMode, content.trim())
+        console.log('🏁 Workflow execution completed')
 
       } catch (error: any) {
-        console.error("Workflow error:", error)
+        console.error("❌ Workflow error:", error)
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        })
+
+        // Add error message to chat
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: `Sorry, there was an error with the collaborative workflow: ${error.message || 'Unknown error'}`,
+          timestamp: new Date().toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        }
+        setMessages((prev) => [...prev, errorMessage])
         setIsLoading(false)
       }
       return
@@ -190,6 +592,7 @@ export default function ConversationsLanding() {
       id: `user-${Date.now()}`,
       role: 'user',
       content: content.trim(),
+      images: images,
       timestamp: new Date().toLocaleTimeString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
@@ -238,6 +641,17 @@ export default function ConversationsLanding() {
       // Prepare request body
       const requestBody: any = {
         content: content.trim(),
+        collaboration_mode: isCollaborateMode,
+      }
+      
+      // Add images if present - convert to attachments format
+      if (images && images.length > 0) {
+        requestBody.attachments = images.map((img, index) => ({
+          type: "image",
+          name: img.file?.name || `image-${index + 1}`,
+          url: img.url,
+          mimeType: img.file?.type || "image/jpeg"
+        }))
       }
 
       // Only add model_preference if not using auto mode

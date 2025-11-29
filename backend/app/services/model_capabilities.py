@@ -41,6 +41,7 @@ class ModelCapability:
     strengths: ModelStrengths
     cost_tier: CostTier
     has_browse: bool  # Can access real-time web information
+    has_vision: bool  # Can process images
     relative_latency: float  # 0.0 (fastest) to 1.0 (slowest)
     max_context_tokens: int  # Maximum context window
     description: str
@@ -54,6 +55,7 @@ class ModelCapability:
             "strengths": self.strengths.to_dict(),
             "cost_tier": self.cost_tier.value,
             "has_browse": self.has_browse,
+            "has_vision": self.has_vision,
             "relative_latency": self.relative_latency,
             "max_context_tokens": self.max_context_tokens,
             "description": self.description
@@ -77,9 +79,10 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.HIGH,
         has_browse=False,
+        has_vision=True,  # GPT-4o supports vision
         relative_latency=0.6,
         max_context_tokens=128000,
-        description="OpenAI's most capable model, excellent for complex reasoning and code"
+        description="OpenAI's most capable model with vision, excellent for complex reasoning and image analysis"
     ),
     "openai:gpt-4o-mini": ModelCapability(
         id="openai:gpt-4o-mini",
@@ -95,6 +98,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.LOW,
         has_browse=False,
+        has_vision=True,  # GPT-4o mini supports vision
         relative_latency=0.3,
         max_context_tokens=128000,
         description="Fast, cost-effective OpenAI model for most tasks"
@@ -113,6 +117,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.HIGH,
         has_browse=False,
+        has_vision=True,  # GPT-4 Turbo supports vision
         relative_latency=0.5,
         max_context_tokens=128000,
         description="GPT-4 with improved speed and vision capabilities"
@@ -133,6 +138,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.LOW,
         has_browse=False,
+        has_vision=True,  # Gemini 2.5 Flash supports vision
         relative_latency=0.25,
         max_context_tokens=1000000,
         description="Google's fastest Gemini model with massive context"
@@ -151,6 +157,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.HIGH,
         has_browse=False,
+        has_vision=True,  # Gemini 2.5 Pro supports vision
         relative_latency=0.6,
         max_context_tokens=2000000,
         description="Google's most capable model with 2M token context"
@@ -169,6 +176,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.LOW,
         has_browse=False,
+        has_vision=True,  # Gemini 2.0 Flash supports vision
         relative_latency=0.3,
         max_context_tokens=1000000,
         description="Fast and reliable Gemini model"
@@ -189,6 +197,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.MEDIUM,
         has_browse=True,  # Real-time web search
+        has_vision=False,  # Perplexity Sonar Pro does not support vision
         relative_latency=0.5,
         max_context_tokens=127000,
         description="Best for research with real-time web access and citations"
@@ -207,6 +216,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.LOW,
         has_browse=True,
+        has_vision=False,  # Perplexity Sonar does not support vision
         relative_latency=0.4,
         max_context_tokens=127000,
         description="Fast web search with good factuality"
@@ -225,6 +235,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.MEDIUM,
         has_browse=True,
+        has_vision=False,  # Perplexity Sonar Reasoning does not support vision
         relative_latency=0.6,
         max_context_tokens=127000,
         description="Chain-of-thought reasoning with web access"
@@ -245,6 +256,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.LOW,
         has_browse=False,
+        has_vision=False,  # Kimi models do not support vision currently
         relative_latency=0.4,
         max_context_tokens=32000,
         description="Kimi's balanced model with 32K context"
@@ -263,6 +275,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.MEDIUM,
         has_browse=False,
+        has_vision=False,  # Kimi models do not support vision currently
         relative_latency=0.5,
         max_context_tokens=128000,
         description="Kimi's long-context model for extensive documents"
@@ -281,6 +294,7 @@ MODEL_CAPABILITIES: Dict[str, ModelCapability] = {
         ),
         cost_tier=CostTier.MEDIUM,
         has_browse=False,
+        has_vision=False,  # Kimi models do not support vision currently
         relative_latency=0.45,
         max_context_tokens=128000,
         description="Kimi's latest turbo model with improved capabilities"
@@ -429,4 +443,9 @@ def get_best_model_for_role(
 def format_models_for_orchestrator(available_models: List[ModelCapability]) -> List[Dict]:
     """Format model capabilities for the orchestrator LLM input"""
     return [model.to_dict() for model in available_models]
+
+
+
+
+
 

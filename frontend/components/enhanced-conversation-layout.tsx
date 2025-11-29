@@ -28,6 +28,7 @@ interface EnhancedConversationLayoutProps {
   messages: Message[]
   history: ChatHistoryItem[]
   onSendMessage: (content: string) => void
+  onUpdateMessage?: (messageId: string, updates: Partial<Message>) => void
   onNewChat: () => void
   onHistoryClick: (id: string) => void
   isLoading: boolean
@@ -40,6 +41,7 @@ export function EnhancedConversationLayout({
   messages,
   history,
   onSendMessage,
+  onUpdateMessage,
   onNewChat,
   onHistoryClick,
   isLoading,
@@ -66,6 +68,7 @@ export function EnhancedConversationLayout({
         <EnhancedChatInterface
           messages={messages}
           onSendMessage={onSendMessage}
+          onUpdateMessage={onUpdateMessage}
           isLoading={isLoading}
           selectedModel={selectedModel}
           onModelSelect={onModelSelect}

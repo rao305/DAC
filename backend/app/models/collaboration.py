@@ -94,7 +94,7 @@ class CollabRun(Base):
     completed_at = Column(DateTime(timezone=True))
     total_time_ms = Column(Integer)
     error = Column(JSON)  # { message, provider, step_id, type }
-    metadata = Column(JSON)  # cost, tokens, etc.
+    run_metadata = Column(JSON)  # cost, tokens, etc.
     
     # Relationships
     conversation = relationship("Conversation", back_populates="collab_runs")
@@ -168,7 +168,7 @@ class CollabMessage(Base):
     
     # Citations and metadata
     citations = Column(JSON)  # URLs/sources from research steps
-    metadata = Column(JSON)  # { isMock, latencyMs, tokens, collabRole, collabStepIndex, ... }
+    msg_metadata = Column(JSON)  # { isMock, latencyMs, tokens, collabRole, collabStepIndex, ... }
     
     sequence = Column(Integer)  # display order within conversation
     
@@ -192,7 +192,7 @@ class CollabMessage(Base):
             'sequence': self.sequence,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'citations': self.citations,
-            'metadata': self.metadata
+            'metadata': self.msg_metadata
         }
 
 

@@ -34,8 +34,8 @@ MODEL_COSTS = {
     # Gemini
     (ProviderType.GEMINI, "gemini-2.5-pro"): 1.25,  # $1.25 per 1M tokens
     (ProviderType.GEMINI, "gemini-2.5-flash"): 0.075,  # $0.075 per 1M tokens - CHEAPEST
-    (ProviderType.GEMINI, "gemini-1.5-pro"): 1.25,
-    (ProviderType.GEMINI, "gemini-1.5-flash"): 0.075,
+    (ProviderType.GEMINI, "gemini-2.5-pro"): 1.25,
+    (ProviderType.GEMINI, "gemini-2.5-flash"): 0.075,
 
     # Perplexity
     (ProviderType.PERPLEXITY, "sonar-pro"): 3.00,  # $3 per 1M tokens (with search)
@@ -305,7 +305,7 @@ class IntelligentRouter:
         # Try common providers in order
         fallback_order = [
             (ProviderType.OPENAI, "gpt-4o-mini"),
-            (ProviderType.GEMINI, "gemini-1.5-flash"),
+            (ProviderType.GEMINI, "gemini-2.5-flash"),
             (ProviderType.PERPLEXITY, "sonar"),
             (ProviderType.KIMI, "moonshot-v1-8k")
         ]

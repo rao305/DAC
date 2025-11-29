@@ -7,6 +7,8 @@ from app.models.memory import MemoryFragment
 from app.models.audit import AuditLog
 from app.models.provider_key import ProviderKey
 from app.models.access_graph import UserAgentPermission, AgentResourcePermission
+from app.models.router_run import RouterRun
+from app.models.collaborate import CollaborateRun, CollaborateStage, CollaborateReview
 
 __all__ = [
     "Org",
@@ -18,4 +20,8 @@ __all__ = [
     "ProviderKey",
     "UserAgentPermission",
     "AgentResourcePermission",
+    "RouterRun",
+    "CollaborateRun",
+    "CollaborateStage",
+    "CollaborateReview",
 ]

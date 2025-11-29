@@ -88,8 +88,8 @@ def calculate_cost_estimate(
     """
     # Pricing per 1M tokens (input, output)
     pricing = {
-        ("gemini", "gemini-1.5-flash"): (0.075, 0.30),
-        ("gemini", "gemini-1.5-pro"): (0.125, 0.50),
+        ("gemini", "gemini-2.5-flash"): (0.075, 0.30),
+        ("gemini", "gemini-2.5-pro"): (0.125, 0.50),
         ("openai", "gpt-4o-mini"): (0.15, 0.60),
         ("openai", "gpt-4o"): (2.50, 10.00),
         ("perplexity", "sonar"): (1.00, 5.00),

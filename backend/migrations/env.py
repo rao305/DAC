@@ -16,7 +16,8 @@ from config import get_settings
 # Import all models to ensure they're registered
 from app.models import (
     Org, User, Thread, Message, MemoryFragment,
-    AuditLog, ProviderKey, UserAgentPermission, AgentResourcePermission
+    AuditLog, ProviderKey, UserAgentPermission, AgentResourcePermission,
+    RouterRun
 )
 
 # this is the Alembic Config object

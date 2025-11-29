@@ -19,6 +19,7 @@ class ChooseProviderRequest(BaseModel):
     message: str = Field(..., min_length=1)
     context_size: Optional[int] = None  # Number of messages in thread
     thread_id: Optional[str] = None
+    has_images: bool = False  # Whether the request contains images
 
 
 class ChooseProviderResponse(BaseModel):
@@ -28,7 +29,7 @@ class ChooseProviderResponse(BaseModel):
     reason: str
 
 
-def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]:
+def analyze_content(message: str, context_size: int = 0, has_images: bool = False) -> tuple[str, str, str]:
     """
     Domain-specialist LLM router - Each provider is an expert agent.
     
@@ -39,32 +40,42 @@ def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]
     ║ AGENT SPECIALIZATIONS (Domain → Expert LLM)                     ║
     ╠══════════════════════════════════════════════════════════════════╣
     ║ 1. GEMINI AGENT                                                  ║
-    ║    Domain: Technical Execution & Code Generation                 ║
-    ║    Best for: Programming, algorithms, data structures, debugging ║
-    ║    Strength: Fast (TTFT ~300ms), 1M+ token context              ║
+    ║    Domain: Technical Execution & Vision Analysis                 ║
+    ║    Best for: Programming, algorithms, image analysis, multimodal ║
+    ║    Strength: Fast (TTFT ~300ms), 1M+ token context, vision      ║
     ║                                                                  ║
     ║ 2. OPENAI AGENT                                                  ║
-    ║    Domain: Complex Reasoning & Creative Tasks                    ║
-    ║    Best for: Multi-step logic, analysis, creative writing, math  ║
-    ║    Strength: Superior reasoning, instruction following           ║
+    ║    Domain: Complex Reasoning & Vision Understanding              ║
+    ║    Best for: Multi-step logic, analysis, image reasoning, math   ║
+    ║    Strength: Superior reasoning, instruction following, vision   ║
     ║                                                                  ║
-    ║ 3. KIMI AGENT (Moonshot AI) ⭐ NEW!                             ║
-    ║    Domain: Long-Context Creative Writing                         ║
+    ║ 3. KIMI AGENT (Moonshot AI)                                     ║
+    ║    Domain: Long-Context Creative Writing (Text Only)             ║
     ║    Best for: Storytelling, articles, essays, long-form content   ║
     ║    Strength: 128k context window, Chinese & English proficiency  ║
     ║                                                                  ║
     ║ 4. PERPLEXITY AGENT                                              ║
-    ║    Domain: Real-time Information & Factual Research              ║
+    ║    Domain: Real-time Information & Research (Text Only)          ║
     ║    Best for: Current events, news, citations, web-grounded facts║
     ║    Strength: Live web search, always up-to-date, cited sources  ║
     ║                                                                  ║
     ║ 5. FALLBACK AGENT (Perplexity)                                  ║
-    ║    Domain: General Conversation & Simple Q&A                     ║
+    ║    Domain: General Conversation & Simple Q&A (Text Only)         ║
     ║    Best for: Casual chat, simple questions, general knowledge    ║
     ╚══════════════════════════════════════════════════════════════════╝
     
     Routing: Query → Domain Detection → Specialist Selection → Response
     """
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # DOMAIN 0: VISION/IMAGE PROCESSING (HIGHEST PRIORITY)
+    # ═══════════════════════════════════════════════════════════════════
+    if has_images:
+        # For images, prefer OpenAI GPT-4o for best vision understanding
+        # Fallback to Gemini if OpenAI is not available
+        provider = ProviderType.OPENAI
+        model = validate_and_get_model(provider, "gpt-4o")
+        return provider.value, model, "Vision/image analysis (GPT-4o - superior vision understanding)"
     message_lower = message.lower()
     
     # ═══════════════════════════════════════════════════════════════════
@@ -114,7 +125,7 @@ def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]
     if any(keyword in message_lower for keyword in structured_keywords):
         # Code generation: Try Gemini first (fast), fallback to Perplexity
         provider = ProviderType.GEMINI
-        model = validate_and_get_model(provider, "gemini-1.5-flash")  # Production model, 60 RPM
+        model = validate_and_get_model(provider, "gemini-2.5-flash")  # Production model, 60 RPM
         return provider.value, model, "Code generation (Gemini 1.5 Flash - 60 RPM, fast)"
 
     # ═══════════════════════════════════════════════════════════════════
@@ -158,7 +169,7 @@ def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]
     # Context size > 10 messages indicates need for extended context window
     if context_size and context_size > 10:
         provider = ProviderType.GEMINI
-        model = validate_and_get_model(provider, "gemini-1.5-pro")  # 2M token context, best for long conversations
+        model = validate_and_get_model(provider, "gemini-2.5-pro")  # 2M token context, best for long conversations
         return provider.value, model, f"Long conversation ({context_size} msgs - Gemini 1.5 Pro, 2M tokens)"
 
     # Also route to Gemini for explicit long-document queries
@@ -171,7 +182,7 @@ def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]
     ]
     if any(keyword in message_lower for keyword in long_doc_keywords):
         provider = ProviderType.GEMINI
-        model = validate_and_get_model(provider, "gemini-1.5-pro")  # 2M tokens for large documents
+        model = validate_and_get_model(provider, "gemini-2.5-pro")  # 2M tokens for large documents
         return provider.value, model, "Document analysis (Gemini 1.5 Pro - 2M token context)"
 
     # Rule 4: Question detection → Perplexity for factual Q&A
@@ -187,7 +198,7 @@ def analyze_content(message: str, context_size: int = 0) -> tuple[str, str, str]
     if is_ambiguous:
         # Route ambiguous queries to Gemini (better at handling vague requests)
         provider = ProviderType.GEMINI
-        model = validate_and_get_model(provider, "gemini-1.5-flash")
+        model = validate_and_get_model(provider, "gemini-2.5-flash")
         return provider.value, model, "Ambiguous query (Gemini 1.5 Flash - handles vague requests)"
     
     question_patterns = [
@@ -224,7 +235,7 @@ async def choose_provider(
     This implements Phase 1 routing logic based on content analysis.
     Phase 2 will add cost optimization, latency tracking, and fallback logic.
     """
-    provider_str, model, reason = analyze_content(request.message, request.context_size or 0)
+    provider_str, model, reason = analyze_content(request.message, request.context_size or 0, request.has_images)
     
     # Extract intent from reason for smoothing
     current_intent = "ambiguous_or_other"  # Default
@@ -246,7 +257,7 @@ async def choose_provider(
         if smoothed_intent != current_intent and smoothed_intent == "qa_retrieval":
             # Re-route to a model good for explanations
             provider_str = ProviderType.GEMINI.value
-            model = validate_and_get_model(ProviderType.GEMINI, "gemini-1.5-flash")
+            model = validate_and_get_model(ProviderType.GEMINI, "gemini-2.5-flash")
             reason = f"Explanation follow-up (Gemini 1.5 Flash - fast, context-aware)"
         
         # Update last intent for next turn

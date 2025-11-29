@@ -54,4 +54,6 @@ def _get_fallback_key(provider: ProviderType) -> Optional[str]:
         return settings.google_api_key
     if provider == ProviderType.OPENROUTER:
         return settings.openrouter_api_key
+    if provider == ProviderType.KIMI:
+        return settings.kimi_api_key
     return None

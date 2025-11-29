@@ -51,6 +51,8 @@ from app.services.collaboration_engine import CollaborationEngine
 from app.services.main_assistant import MainAssistant
 from app.services.conversation_storage import ConversationStorageService
 from app.services.token_track import normalize_usage
+from app.services.dynamic_router.integration import route_with_dynamic_router
+from app.models.router_run import RouterRun
 from contextlib import asynccontextmanager
 
 # OpenTelemetry (optional)
@@ -524,6 +526,7 @@ async def add_message(
     db: AsyncSession = Depends(get_db)
 ):
     """Add a message to a thread with optional multi-agent collaboration."""
+    print(f"🔍 DEBUG: add_message called - collaboration_mode={request.collaboration_mode}, content={request.content[:50]}...")
     await set_rls_context(db, org_id)
     await memory_guard.ensure_health()
 
@@ -561,7 +564,8 @@ async def add_message(
             turn_id=turn_id,
             api_keys=api_keys,
             collaboration_mode=request.collaboration_mode,
-            chat_history=chat_history
+            chat_history=chat_history,
+            nextgen_mode="legacy"
         )
         
         # Store collaboration results if needed
@@ -906,6 +910,22 @@ async def add_message(
         actual_prompt_tokens = provider_response.prompt_tokens or prompt_tokens_estimate
         completion_tokens = provider_response.completion_tokens or estimate_text_tokens(provider_response.content)
         total_tokens = (actual_prompt_tokens or 0) + (completion_tokens or 0)
+
+        # DEBUG: log finish_reason and token usage for normal mode
+        finish_reason = getattr(provider_response, "finish_reason", None)
+        try:
+            print(
+                f"[NORMAL MODE] provider={request.provider.value} "
+                f"model={current_attempt_model} "
+                f"finish_reason={finish_reason} "
+                f"prompt_tokens={actual_prompt_tokens} "
+                f"completion_tokens={completion_tokens} "
+                f"total_tokens={total_tokens} "
+                f"content_length={len(provider_response.content)}"
+            )
+        except Exception:
+            # Don't let logging break the request
+            pass
         
         # Record additional tokens if needed
         additional_tokens = max(total_tokens - prompt_tokens_estimate, 0)
@@ -1153,18 +1173,64 @@ async def add_message_streaming(
     )
     forced_reason = "Vision/image understanding (Gemini 2.5 Flash - multimodal)"
 
+    # Start DB operations early for dynamic router
+    start_db = perf_time.perf_counter()
+    rls_task = set_rls_context(db, org_id)
+    await rls_task  # Need RLS for router to query available providers
+    
     if has_image_attachments:
         provider_enum = ProviderType.GEMINI
         model = "gemini-2.5-flash"
         reason = forced_reason
+        validated_model = validate_and_get_model(provider_enum, model)
+        router_decision = None  # No router decision for forced routing
     else:
-        # Route FIRST (no DB needed) - this is the key optimization
-        # Use rewritten content for routing
-        from app.api.router import analyze_content
-        provider_str, model, reason = analyze_content(rewritten_content, 0)
-        provider_enum = ProviderType(provider_str)
+        # Use dynamic router for intelligent model selection
+        try:
+            # Get OpenAI API key for router LLM
+            router_api_key = os.getenv("OPENAI_API_KEY") or settings.openai_api_key
+            if not router_api_key:
+                # Try to get from DB
+                try:
+                    router_api_key = await get_api_key_for_org(db, org_id, ProviderType.OPENAI)
+                except:
+                    pass
+            
+            # Build context summary (simple version - can be enhanced)
+            context_summary = ""
+            if FEATURE_COREWRITE:
+                from app.services.threads_store import get_history
+                history_turns = get_history(thread_id, max_turns=3)
+                if history_turns:
+                    context_summary = f"Previous conversation: {len(history_turns)} turns"
+            
+            # Route with dynamic router
+            router_decision = await route_with_dynamic_router(
+                user_message=rewritten_content,
+                context_summary=context_summary,
+                db=db,
+                org_id=org_id,
+                router_api_key=router_api_key,
+            )
+            
+            # Extract provider and model from router decision
+            provider_enum = router_decision.chosen_model.provider
+            validated_model = router_decision.chosen_model.provider_model
+            reason = router_decision.reason
+            model = validated_model  # For compatibility
+            
+            print(f"🎯 Dynamic router: {router_decision.chosen_model.display_name} (task: {router_decision.intent.task_type}, priority: {router_decision.intent.priority})")
+        except Exception as e:
+            # Fallback to old router if dynamic router fails
+            import traceback
+            print(f"⚠️  Dynamic router error: {e}, falling back to legacy router")
+            print(traceback.format_exc())
+            from app.api.router import analyze_content
+            provider_str, model, reason = analyze_content(rewritten_content, 0)
+            provider_enum = ProviderType(provider_str)
+            validated_model = validate_and_get_model(provider_enum, model)
+            router_decision = None
 
-    validated_model = validate_and_get_model(provider_enum, model)
     print(f"⚡ Routing done in {(perf_time.perf_counter() - start_routing)*1000:.0f}ms -> {provider_enum.value}/{validated_model}")
 
     # Log LLM rewrite if it happened
@@ -1181,9 +1247,7 @@ async def add_message_streaming(
     from app.services.syntra_persona import detect_intent_from_reason
     detected_intent = detect_intent_from_reason(reason) if reason else None
     
-    # Start DB operations in background (don't await yet)
-    start_db = perf_time.perf_counter()
-    rls_task = set_rls_context(db, org_id)
+    # Get API key for chosen provider
     api_key_task = get_api_key_for_org(db, org_id, provider_enum)
     
     # CRITICAL: Use centralized context builder
@@ -1373,7 +1437,17 @@ async def add_message_streaming(
                         usage_data.update(chunk["usage"])
                     finish_reason = chunk.get("finish_reason")
                     if finish_reason == "length":
-                        print(f"⚠️  Provider {provider_enum.value} terminated due to length (response truncated at {len(response_content)} chars)")
+                        # Show the configured completion budget for this provider
+                        try:
+                            from app.services.provider_dispatch import _completion_budget
+                            budget = _completion_budget(provider_enum)
+                        except Exception:
+                            budget = "unknown"
+                        print(
+                            f"⚠️  Provider {provider_enum.value} terminated due to length "
+                            f"(response truncated at {len(response_content)} chars, "
+                            f"budget={budget})"
+                        )
                 
                 yield chunk
         except Exception as e:
@@ -1495,6 +1569,7 @@ async def add_message_streaming(
                 from app.services.token_track import normalize_usage
                 from app.services.observability import log_turn
                 usage = normalize_usage(usage_data, provider_enum.value)
+                latency_ms = int((perf_time.perf_counter() - stream_start) * 1000)
                 await log_turn(
                     thread_id=thread_id,
                     turn_id=str(uuid.uuid4()),
@@ -1502,7 +1577,7 @@ async def add_message_streaming(
                     router_decision={"provider": provider_enum.value, "model": validated_model, "reason": reason},
                     provider=provider_enum.value,
                     model=validated_model,
-                    latency_ms=0,
+                    latency_ms=latency_ms,
                     input_tokens=usage.get("input_tokens"),
                     output_tokens=usage.get("output_tokens"),
                     cost_est=usage.get("cost_est", 0.0),
@@ -1515,6 +1590,36 @@ async def add_message_streaming(
                     },
                     truncated=usage.get("truncated", False),
                 )
+                
+                # Log router run for dynamic routing analytics (if router decision exists)
+                if router_decision:
+                    try:
+                        router_run = RouterRun(
+                            user_id=request.user_id,
+                            session_id=thread_id,
+                            thread_id=thread_id,
+                            task_type=router_decision.intent.task_type,
+                            requires_web=router_decision.intent.requires_web,
+                            requires_tools=router_decision.intent.requires_tools,
+                            priority=router_decision.intent.priority,
+                            estimated_input_tokens=router_decision.intent.estimated_input_tokens,
+                            chosen_model_id=router_decision.chosen_model.id,
+                            chosen_provider=router_decision.chosen_model.provider.value,
+                            chosen_provider_model=router_decision.chosen_model.provider_model,
+                            scores_json=router_decision.scores,
+                            latency_ms=latency_ms,
+                            input_tokens=usage.get("input_tokens"),
+                            output_tokens=usage.get("output_tokens"),
+                            estimated_cost=usage.get("cost_est", 0.0),
+                        )
+                        db.add(router_run)
+                        await db.commit()
+                        print(f"📊 Logged router run: {router_decision.chosen_model.display_name} (task: {router_decision.intent.task_type})")
+                    except Exception as router_log_error:
+                        print(f"⚠️  Failed to log router run: {router_log_error}")
+                        import traceback
+                        print(traceback.format_exc())
+                        await db.rollback()
             except Exception as e:
                 # Log but don't fail - streaming already completed
                 print(f"Background cleanup error: {e}")

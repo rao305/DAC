@@ -26,32 +26,33 @@ class IntentType(str, Enum):
 # Fallback ladder configuration
 FALLBACK_LADDERS: Dict[IntentType, List[Tuple[ProviderType, str, str]]] = {
     IntentType.CODING_HELP: [
-        (ProviderType.GEMINI, "gemini-1.5-flash", "Primary: Fast code generation"),
+        (ProviderType.GEMINI, "gemini-2.5-flash", "Primary: Fast code generation"),
         (ProviderType.OPENAI, "gpt-4o-mini", "Failover: Reliable reasoning"),
+        (ProviderType.KIMI, "moonshot-v1-32k", "Backup: Cost-effective alternative"),
         (ProviderType.PERPLEXITY, "sonar", "Final: General fallback"),
     ],
     IntentType.QA_RETRIEVAL: [
         (ProviderType.PERPLEXITY, "sonar", "Primary: Search-augmented"),
-        (ProviderType.GEMINI, "gemini-1.5-flash", "Failover: Fast reasoning"),
+        (ProviderType.GEMINI, "gemini-2.5-flash", "Failover: Fast reasoning"),
         (ProviderType.OPENAI, "gpt-4o-mini", "Final: General fallback"),
     ],
     IntentType.REASONING_MATH: [
         (ProviderType.OPENAI, "gpt-4o-mini", "Primary: Superior reasoning"),
-        (ProviderType.GEMINI, "gemini-1.5-flash", "Failover: Fast reasoning"),
+        (ProviderType.GEMINI, "gemini-2.5-flash", "Failover: Fast reasoning"),
         (ProviderType.PERPLEXITY, "sonar", "Final: General fallback"),
     ],
     IntentType.SOCIAL_CHAT: [
         (ProviderType.OPENAI, "gpt-4o-mini", "Primary: Conversational chat (no web, no citations)"),
-        (ProviderType.GEMINI, "gemini-1.5-flash", "Failover: Fast chat"),
+        (ProviderType.GEMINI, "gemini-2.5-flash", "Failover: Fast chat"),
         (ProviderType.PERPLEXITY, "sonar", "Final: General fallback"),
     ],
     IntentType.EDITING_WRITING: [
         (ProviderType.PERPLEXITY, "sonar", "Primary: Web-grounded editing"),
-        (ProviderType.GEMINI, "gemini-1.5-flash", "Failover: Fast editing"),
+        (ProviderType.GEMINI, "gemini-2.5-flash", "Failover: Fast editing"),
         (ProviderType.OPENAI, "gpt-4o-mini", "Final: General fallback"),
     ],
     IntentType.AMBIGUOUS: [
-        (ProviderType.GEMINI, "gemini-1.5-flash", "Primary: Handles vague requests"),
+        (ProviderType.GEMINI, "gemini-2.5-flash", "Primary: Handles vague requests"),
         (ProviderType.PERPLEXITY, "sonar", "Failover: Web-grounded"),
         (ProviderType.OPENAI, "gpt-4o-mini", "Final: General fallback"),
     ],

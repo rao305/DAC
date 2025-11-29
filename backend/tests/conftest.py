@@ -1,15 +1,11 @@
-"""Pytest configuration and shared fixtures."""
+"""Pytest configuration and fixtures."""
 import pytest
-import sys
-from pathlib import Path
-
-# Add backend to path
-backend_path = Path(__file__).parent.parent
-sys.path.insert(0, str(backend_path))
+import os
+from unittest.mock import patch
 
 
-@pytest.fixture(scope="session")
-def test_data_dir():
-    """Fixture providing test data directory."""
-    return Path(__file__).parent
-
+@pytest.fixture(autouse=True)
+def mock_openai_key():
+    """Mock OpenAI API key for tests."""
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+        yield

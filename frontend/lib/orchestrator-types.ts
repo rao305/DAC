@@ -116,6 +116,29 @@ export interface StepResult {
 }
 
 // ============================================================================
+// External Review Types (Multi-Model Council)
+// ============================================================================
+
+export interface ExternalReview {
+  reviewer: string
+  provider: string
+  model: string
+  critique: string
+  status: 'success' | 'failed'
+  error?: string
+}
+
+export interface SynthesisMetadata {
+  synthesis_type: 'minimal_changes' | 'moderate_integration' | 'major_revision' | 'uncertainty_highlighted'
+  primary_improvement: 'factual_correction' | 'perspective_added' | 'clarity_enhanced' | 'uncertainty_noted'
+  confidence_level: 'high' | 'medium' | 'low'
+  synthesis_status: 'success' | 'failed'
+  analysis_available: boolean
+  fallback_used?: boolean
+  error?: string
+}
+
+// ============================================================================
 // API Request/Response Types
 // ============================================================================
 
@@ -134,6 +157,31 @@ export interface DynamicCollaborateResponse {
   step_results: StepResult[]
   total_time_ms: number
   available_models_used: string[]
+}
+
+export interface EnhancedCollaborateRequest {
+  user_id?: string
+  message: string
+  conversation_id?: string
+  enable_external_review?: boolean
+  review_mode?: 'auto' | 'high_fidelity' | 'expert'
+}
+
+export interface EnhancedCollaborateResponse {
+  collab_run: {
+    id: string
+    conversation_id: string
+    status: string
+    total_time_ms: number
+  }
+  internal_report: string
+  compressed_report?: string
+  external_critiques: ExternalReview[]
+  final_answer: string
+  synthesis_metadata?: SynthesisMetadata
+  external_review_conducted: boolean
+  reviewers_consulted: number
+  total_time_ms: number
 }
 
 export interface AvailableModelsResponse {
@@ -253,4 +301,89 @@ export const DEFAULT_COLLAB_SETTINGS: UserSettings = {
   priority: 'balanced',
   max_steps: 5
 }
+
+/**
+ * Default settings for enhanced collaboration
+ */
+export const DEFAULT_ENHANCED_COLLAB_SETTINGS = {
+  enable_external_review: true,
+  review_mode: 'auto' as const
+}
+
+// ============================================================================
+// Enhanced Collaboration Helper Functions
+// ============================================================================
+
+export function getReviewModeDisplay(mode: 'auto' | 'high_fidelity' | 'expert'): { name: string; description: string } {
+  const displays = {
+    auto: {
+      name: 'Auto',
+      description: 'External review triggered automatically based on confidence'
+    },
+    high_fidelity: {
+      name: 'High Fidelity',
+      description: 'Always include external multi-model review'
+    },
+    expert: {
+      name: 'Expert',
+      description: 'Maximum external reviewers + comprehensive analysis'
+    }
+  }
+  return displays[mode]
+}
+
+export function getSynthesisTypeDisplay(type: SynthesisMetadata['synthesis_type']): { name: string; description: string; color: string } {
+  const displays = {
+    minimal_changes: {
+      name: 'Minimal Changes',
+      description: 'External reviews mostly agreed with internal report',
+      color: '#10B981' // Green
+    },
+    moderate_integration: {
+      name: 'Moderate Integration',
+      description: 'Some external suggestions were incorporated',
+      color: '#3B82F6' // Blue
+    },
+    major_revision: {
+      name: 'Major Revision',
+      description: 'Significant changes based on external feedback',
+      color: '#F59E0B' // Amber
+    },
+    uncertainty_highlighted: {
+      name: 'Uncertainty Highlighted',
+      description: 'Major disagreements or knowledge gaps identified',
+      color: '#EF4444' // Red
+    }
+  }
+  return displays[type]
+}
+
+export function getReviewerIcon(provider: string): string {
+  const icons: Record<string, string> = {
+    perplexity: '🔍',
+    gemini: '🎯',
+    openai: '✨',
+    kimi: '🌙',
+    openrouter: '🔀'
+  }
+  return icons[provider] || '🤖'
+}
+
+export function formatReviewerName(reviewer: string, provider: string): string {
+  // Clean up reviewer names for display
+  const cleanNames: Record<string, string> = {
+    'Factual Expert': '🔍 Factual Expert',
+    'Perspective Analyst': '🎯 Perspective Analyst',
+    'Clarity Specialist': '✨ Clarity Specialist',
+    'Alternative Perspective': '🌙 Alternative Perspective',
+    'Technical Depth': '🔀 Technical Depth',
+    'Systematic Analysis': '🔀 Systematic Analysis'
+  }
+  return cleanNames[reviewer] || `${getReviewerIcon(provider)} ${reviewer}`
+}
+
+
+
+
+
 

@@ -94,7 +94,7 @@ export async function callGemini(
         // Support both GEMINI_API_KEY and GOOGLE_API_KEY
         const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout (increased for large context)
 
         // Gemini API structure (simplified)
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -133,7 +133,8 @@ export async function callGemini(
 // Helper to call Perplexity
 export async function callPerplexity(
     messages: { role: string; content: string }[],
-    model: string = "sonar-pro"
+    model: string = "sonar-pro",
+    retryAttempt: number = 0
 ): Promise<ModelResponse> {
     if (!isPerplexityAvailable()) {
         if (IS_MOCK_MODE) {
@@ -147,10 +148,10 @@ export async function callPerplexity(
     }
 
     try {
-        console.log(`[Perplexity] Calling Perplexity API with model ${model}...`);
+        console.log(`[Perplexity] Calling Perplexity API with model ${model}... (attempt ${retryAttempt + 1}/3)`);
         const apiKey = process.env.PERPLEXITY_API_KEY;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout (increased for research tasks)
 
         const response = await fetch("https://api.perplexity.ai/chat/completions", {
             method: "POST",
@@ -172,17 +173,48 @@ export async function callPerplexity(
         }
 
         const data = await response.json();
-        console.log(`[Perplexity] Response received: ${data.choices[0].message.content.substring(0, 50)}...`);
-        return { content: data.choices[0].message.content, isMock: false };
+        console.log(`[Perplexity] Full response data:`, JSON.stringify(data, null, 2));
+        
+        // Validate response structure
+        if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+            throw new ProviderCallError("Perplexity", "Invalid API response: no choices array");
+        }
+        
+        if (!data.choices[0].message || !data.choices[0].message.content) {
+            throw new ProviderCallError("Perplexity", "Invalid API response: no message content");
+        }
+        
+        const content = data.choices[0].message.content;
+        console.log(`[Perplexity] Response received: ${content.substring(0, 50)}...`);
+        return { content, isMock: false };
     } catch (error: any) {
         console.error("Perplexity Call Error:", error);
+        
+        // Retry logic for timeout and network errors
+        if ((error.name === 'AbortError' || error.name === 'NetworkError') && retryAttempt < 2) {
+            console.warn(`[Perplexity] Retrying due to ${error.name} (attempt ${retryAttempt + 2}/3)...`);
+            await new Promise(resolve => setTimeout(resolve, 2000 * (retryAttempt + 1))); // Exponential backoff
+            return callPerplexity(messages, model, retryAttempt + 1);
+        }
+        
         if (error.name === 'AbortError') {
-            throw new ProviderCallError("Perplexity", "Request timed out", 408);
+            throw new ProviderCallError("Perplexity", "Request timed out after retries", 408);
         }
         if (error instanceof ProviderConfigError || error instanceof ProviderCallError) {
             throw error;
         }
-        throw new ProviderCallError("Perplexity", error.message);
+        
+        // If we're in development, provide a fallback response instead of crashing
+        if (process.env.NODE_ENV === "development") {
+            console.warn("[Perplexity] Falling back to mock response due to API error");
+            return {
+                content: `[FALLBACK PERPLEXITY RESPONSE]\n\nI encountered an error with the Perplexity API and provided a fallback research response.\n\nError: ${error.message}\n\n**Research Findings:**\n- Unable to perform live research due to API connectivity issues\n- Please check your PERPLEXITY_API_KEY configuration\n- Consider using mock mode for development`,
+                isMock: true,
+                error: `Perplexity API Error: ${error.message}`
+            };
+        }
+        
+        throw new ProviderCallError("Perplexity", error.message || "Unknown Perplexity API error");
     }
 }
 
@@ -203,12 +235,19 @@ export async function callKimi(
     }
 
     try {
-        console.log(`[Kimi] Calling Moonshot API with model ${model}...`);
         const apiKey = process.env.KIMI_API_KEY || process.env.MOONSHOT_API_KEY;
+        console.log(`[Kimi] Calling Moonshot API with model ${model}...`);
+        console.log(`[Kimi] API key present: ${!!apiKey}, starts with: ${apiKey?.substring(0, 8) || 'N/A'}...`);
+        
+        if (!apiKey) {
+            throw new ProviderConfigError("KIMI_API_KEY is not set");
+        }
+        
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-        const response = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+        // Use moonshot.ai domain (same as backend) - moonshot.cn might be for China region
+        const response = await fetch("https://api.moonshot.ai/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",

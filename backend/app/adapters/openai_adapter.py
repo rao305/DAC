@@ -13,7 +13,7 @@ API_URL = "https://api.openai.com/v1/chat/completions"
 
 
 async def call_openai(
-    messages: List[Dict[str, str]],
+    messages: List[Dict],
     model: str,
     api_key: str,
     *,
@@ -61,7 +61,7 @@ async def call_openai(
 
 
 async def call_openai_streaming(
-    messages: List[Dict[str, str]],
+    messages: List[Dict],
     model: str,
     api_key: str,
     *,
